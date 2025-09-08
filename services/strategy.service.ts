@@ -161,7 +161,7 @@ type Signal = {
     time: number;
     price: number;
     reason?: string;
-    entryRange?: [number, number];
+    entryRange?: number[];
     suggestedSL?: number[];
     suggestedTP?: number;
 };

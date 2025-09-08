@@ -50,7 +50,7 @@ router.get("/:commodity/:strategyName", async (req: Request, res: Response) => {
             String(commodity),
             String(interval),
             Number(limit),
-            slMethod
+            // slMethod
         );
 
         return res.json(result);
