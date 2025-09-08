@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { runMaCrossover } from "../services/strategy.service.js";
 import { fetchCandlesFromBinance } from "../services/fetchCandles.js";
 
-const router = Router();
+const router = Router()
 
 // /api/candles/:commodity
 router.get("/candles/:commodity", async (req: Request, res: Response) => {
