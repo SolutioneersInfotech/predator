@@ -127,7 +127,12 @@ export async function runRSIStrategy(
 ): Promise<RSISignal[]> {
     try {
         // 🧹 Cleanup: remove "-" so BTC-USD -> BTCUSD (AlphaVantage format)
-        const cleanSymbol = symbol.replace("-", "");
+        let cleanSymbol = symbol.replace("-", "");
+        // check if last character is 'T'
+        if (cleanSymbol.endsWith("T")) {
+            cleanSymbol = cleanSymbol.slice(0, -1); // remove last character
+        }
+        console.log(`Running RSI for ${cleanSymbol} at ${interval}`);
 
         const url = `https://www.alphavantage.co/query?function=RSI&symbol=${encodeURIComponent(
             cleanSymbol
