@@ -240,11 +240,11 @@
 import axios from "axios";
 import { fetchCandlesFromBinance } from "./fetchCandles.js";
 
-
 export interface RSIStrategyResponse {
     candles: { time: number; open: number; high: number; low: number; close: number }[];
-    rsiSignals: { time: string; rsi: number; signal: "BUY" | "SELL" | "NEUTRAL"; close: number }[];
+    rsiSignals: { time: number; rsi: number; signal: "BUY" | "SELL" | "NEUTRAL" }[];
 }
+
 const API_KEY = process.env.ALPHA_VANTAGE_KEY || "BXX8DMFBRW3NNJQ1";
 
 // Helper function to determine signal from RSI value
@@ -253,7 +253,6 @@ function getSignalFromRSI(rsi: number): "BUY" | "SELL" | "NEUTRAL" {
     if (rsi > 60) return "SELL";
     return "NEUTRAL";
 }
-
 
 export async function runRSIStrategy(
     symbol: string,
@@ -287,9 +286,8 @@ export async function runRSIStrategy(
             if (!isNaN(r)) rsiMap[time] = r;
         }
 
-        // Prepare frontend-friendly response
         const candlesData = candles.map((c) => ({
-            time: c.time,
+            time: c.time, // timestamp in ms
             open: c.open,
             high: c.high,
             low: c.low,
@@ -297,13 +295,12 @@ export async function runRSIStrategy(
         }));
 
         const rsiSignals = candles.map((c) => {
-            const date = new Date(c.time).toISOString().slice(0, 10);
-            const rsi = rsiMap[date];
+            const dateStr = new Date(c.time).toISOString().slice(0, 10); // match AlphaVantage date
+            const rsi = rsiMap[dateStr];
             return {
-                time: date,
+                time: c.time, // **use same timestamp as candle** for syncing charts
                 rsi: rsi ?? NaN,
                 signal: Number.isFinite(rsi) ? getSignalFromRSI(rsi) : "NEUTRAL",
-                close: c.close, // for overlaying price line on candlestick chart
             };
         });
 
@@ -313,3 +310,4 @@ export async function runRSIStrategy(
         throw err;
     }
 }
+
