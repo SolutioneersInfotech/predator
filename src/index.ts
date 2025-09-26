@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import strategyRouter from "./routes/strategy.routes.js";
 import commodityRoutes from "./routes/commodityRoutes.js";
+import { verifyAuth } from "./middlewares/authMiddleware.js";
+
 
 dotenv.config();
 
@@ -30,8 +32,14 @@ const connectDB = async () => {
 app.get("/", (_req, res) => res.json({ message: "Strategy API running" }));
 
 // Routes
-app.use("/api/strategy", strategyRouter);
-app.use("/api/commodities", commodityRoutes);
+
+// app.use("/api/strategy", strategyRouter);
+// app.use("/api/commodities", commodityRoutes);
+
+app.use("/api/strategy", verifyAuth("project1"), strategyRouter);
+app.use("/api/commodities", verifyAuth("project1"), commodityRoutes);
+
+
 
 // Start server after DB connection
 const PORT = Number(process.env.PORT || 3000);
