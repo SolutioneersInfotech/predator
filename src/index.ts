@@ -36,8 +36,8 @@ app.get("/", (_req, res) => res.json({ message: "Strategy API running" }));
 // app.use("/api/strategy", strategyRouter);
 // app.use("/api/commodities", commodityRoutes);
 
-app.use("/api/strategy", verifyAuth("project1"), strategyRouter);
-app.use("/api/commodities", verifyAuth("project1"), commodityRoutes);
+app.use("/api/strategy", verifyAuth("Bitbot1"), strategyRouter);
+app.use("/api/commodities", verifyAuth("Bitbot1"), commodityRoutes);
 
 
 
