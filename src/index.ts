@@ -1,14 +1,18 @@
-
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
+
 import mongoose from "mongoose";
 import strategyRouter from "./routes/strategy.routes.js";
 import commodityRoutes from "./routes/commodityRoutes.js";
+import exchangeRouter from "./routes/exchange.routes.js";
+import tradeRouter from "./routes/trade.routes.js";
 import { verifyAuth } from "./middlewares/authMiddleware.js";
 
 
-dotenv.config();
+// dotenv.config();
+console.log("MASTER_KEY is:", process.env.MASTER_KEY);
 
 const app = express();
 app.use(cors());
@@ -38,6 +42,9 @@ app.get("/", (_req, res) => res.json({ message: "Strategy API running" }));
 
 app.use("/api/strategy", verifyAuth("Bitbot1"), strategyRouter);
 app.use("/api/commodities", verifyAuth("Bitbot1"), commodityRoutes);
+
+app.use("/api/exchange", exchangeRouter);
+app.use("/api/trade", tradeRouter);
 
 
 
