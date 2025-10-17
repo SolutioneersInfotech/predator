@@ -9,6 +9,7 @@ import commodityRoutes from "./routes/commodityRoutes.js";
 import exchangeRouter from "./routes/exchange.routes.js";
 import tradeRouter from "./routes/trade.routes.js";
 import { verifyAuth } from "./middlewares/authMiddleware.js";
+import botRoutes from "./routes/botRoutes.js";
 
 
 // dotenv.config();
@@ -45,6 +46,7 @@ app.use("/api/commodities", verifyAuth("Bitbot1"), commodityRoutes);
 
 app.use("/api/exchange", exchangeRouter);
 app.use("/api/trade", tradeRouter);
+app.use('/api/bots', botRoutes);
 
 
 
