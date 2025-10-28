@@ -3,7 +3,7 @@ import axios from "axios";
 import crypto from "crypto";
 
 // const DELTA_BASE = "https://api.delta.exchange";
-const DELTA_BASE = "https://testnet-api.delta.exchange";
+const DELTA_BASE = "https://cdn-ind.testnet.deltaex.org";
 
 function getDeltaHeaders(apiKey: string, apiSecret: string, method: string, path: string, body: any = {}) {
     const ts = Math.floor(Date.now() / 1000);
