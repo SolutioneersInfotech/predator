@@ -1,27 +1,263 @@
-// exchanges/delta.ts
+// // exchanges/delta.ts
+// import axios from "axios";
+// import crypto from "crypto";
+
+// // const DELTA_BASE = "https://api.delta.exchange";
+// const DELTA_BASE = "https://cdn-ind.testnet.deltaex.org";
+
+// function getDeltaHeaders(apiKey: string, apiSecret: string, method: string, path: string, body: any = {}) {
+//     const ts = Math.floor(Date.now() / 1000);
+//     const bodyStr = Object.keys(body).length ? JSON.stringify(body) : "";
+//     const pre = `${ts}${method.toUpperCase()}${path}${bodyStr}`;
+//     const signature = crypto.createHmac("sha256", apiSecret).update(pre).digest("hex");
+//     return {
+//         "api-key": apiKey,
+//         "timestamp": ts,
+//         "signature": signature,
+//         "Content-Type": "application/json",
+//     };
+// }
+
+// export async function placeDeltaOrder(apiKey: string, apiSecret: string, product_id: number, side: "buy" | "sell", size: number, price?: number) {
+//     const path = "/v2/orders";
+//     const body: any = { product_id, side, size, order_type: price ? "limit_order" : "market_order" };
+//     if (price) body.limit_price = price;
+//     const res = await axios.post(`${DELTA_BASE}${path}`, body, { headers: getDeltaHeaders(apiKey, apiSecret, "POST", path, body) });
+//     return res.data;
+// }
+
+
 import axios from "axios";
 import crypto from "crypto";
 
-// const DELTA_BASE = "https://api.delta.exchange";
+// ✅ Dynamic Base URL (Testnet or Mainnet)
 const DELTA_BASE = "https://cdn-ind.testnet.deltaex.org";
 
-function getDeltaHeaders(apiKey: string, apiSecret: string, method: string, path: string, body: any = {}) {
-    const ts = Math.floor(Date.now() / 1000);
-    const bodyStr = Object.keys(body).length ? JSON.stringify(body) : "";
-    const pre = `${ts}${method.toUpperCase()}${path}${bodyStr}`;
-    const signature = crypto.createHmac("sha256", apiSecret).update(pre).digest("hex");
+/**
+ * ✅ Create signed headers for Delta Exchange API
+ */
+// function getDeltaHeaders(
+//     apiKey: string,
+//     apiSecret: string,
+//     method: string,
+//     path: string,
+//     body: any = {}
+// ) {
+//     const ts = Math.floor(Date.now() / 1000); // timestamp in seconds
+//     const bodyStr = Object.keys(body).length ? JSON.stringify(body) : "";
+//     const preSign = `${ts}${method.toUpperCase()}${path}${bodyStr}`;
+//     const signature = crypto.createHmac("sha256", apiSecret).update(preSign).digest("hex");
+
+//     return {
+//         "api-key": apiKey,
+//         "timestamp": ts,
+//         "signature": signature,
+//         "Content-Type": "application/json",
+//     };
+// }
+function getDeltaHeaders(
+    apiKey: string,
+    apiSecret: string,
+    method: string,
+    path: string,
+    body: any = {}
+) {
+    // ✅ Timestamp in seconds (as string)
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+
+    // ✅ Clean path (no leading slash)
+    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+
+    // ✅ Body string only for non-GET
+    const bodyStr =
+        method.toUpperCase() === "GET" || !body || Object.keys(body).length === 0
+            ? ""
+            : JSON.stringify(body);
+
+    // ✅ Correct signature format (same as verifyDeltaCredentials)
+    const signatureData = method.toUpperCase() + timestamp + "/" + cleanPath + bodyStr;
+
+    const signature = crypto
+        .createHmac("sha256", apiSecret)
+        .update(signatureData)
+        .digest("hex");
+
+    // 🔍 Debug (optional)
+    console.log("🔐 Delta Signature Debug", {
+        method,
+        path,
+        timestamp,
+        signatureData,
+        signature,
+    });
+
     return {
         "api-key": apiKey,
-        "timestamp": ts,
-        "signature": signature,
+        timestamp,
+        signature,
         "Content-Type": "application/json",
     };
 }
 
-export async function placeDeltaOrder(apiKey: string, apiSecret: string, product_id: number, side: "buy" | "sell", size: number, price?: number) {
+/**
+ * ✅ Place a new order on Delta Exchange
+ * Works for both MARKET and LIMIT orders
+ */
+// export async function placeDeltaOrder(
+//     apiKey: string,
+//     apiSecret: string,
+//     product_id: number,
+//     side: "buy" | "sell",
+//     size: number,
+//     price?: number
+// ) {
+//     const path = "/v2/orders";
+//     const body: any = {
+//         product_id,
+//         side,
+//         size,
+//         order_type: price ? "limit_order" : "market_order",
+//     };
+//     if (price) body.limit_price = price;
+
+//     try {
+//         const res = await axios.post(`${DELTA_BASE}${path}`, body, {
+//             headers: getDeltaHeaders(apiKey, apiSecret, "POST", path, body),
+//         });
+//         return res.data;
+//     } catch (err: any) {
+//         if (err.response) {
+//             console.error("❌ Delta API Error:", err.response.data);
+//             throw new Error(`Delta API Error: ${err.response.data.error?.message || "Unknown error"}`);
+//         }
+//         console.error("❌ Network/Unknown Error:", err.message);
+//         throw new Error("Failed to place Delta order");
+//     }
+// }
+export async function placeDeltaOrder(
+    apiKey: string,
+    apiSecret: string,
+    product_id: number,
+    side: "buy" | "sell",
+    size: number,
+    price?: number
+) {
     const path = "/v2/orders";
-    const body: any = { product_id, side, size, order_type: price ? "limit_order" : "market_order" };
+
+    // 🧠 FIX HERE: send integer contract size
+    const sizeInt = Math.round(size); // convert 0.01 → 0
+
+    const body: any = {
+        product_id,
+        side,
+        size: sizeInt, // must be integer
+        order_type: price ? "limit_order" : "market_order",
+    };
+
     if (price) body.limit_price = price;
-    const res = await axios.post(`${DELTA_BASE}${path}`, body, { headers: getDeltaHeaders(apiKey, apiSecret, "POST", path, body) });
-    return res.data;
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = "POST";
+    const queryString = "";
+    const payload = JSON.stringify(body);
+    const signatureData = method + timestamp + path + queryString + payload;
+
+    const signature = crypto.createHmac("sha256", apiSecret).update(signatureData).digest("hex");
+
+    const headers = {
+        "api-key": apiKey,
+        "timestamp": timestamp,
+        "signature": signature,
+        "Content-Type": "application/json",
+    };
+
+    console.log("🚀 Sending Order →", body);
+    console.log("🔐 Signature Debug:", { signatureData, signature, timestamp });
+
+    try {
+        const res = await axios.post(`${DELTA_BASE}${path}`, body, { headers });
+        console.log("✅ Order Response:", res.data);
+        return res.data;
+    } catch (err: any) {
+        if (err.response) {
+            console.error("❌ Delta API Error:", err.response.data);
+            throw new Error(
+                `Delta API Error: ${JSON.stringify(err.response.data)}`
+            );
+        }
+        throw new Error("Failed to place Delta order");
+    }
+}
+
+
+
+
+/**
+ * ✅ Fetch all products from Delta Exchange
+ * Used to map symbols (e.g. BTC/USDT → product_id)
+ */
+export async function fetchDeltaProducts() {
+    try {
+        const res = await axios.get(`${DELTA_BASE}/v2/products`);
+        if (res.data?.result) {
+            // Return a simplified map: { "BTC/USDT": 123, "ETH/USDT": 456 }
+            const map: Record<string, number> = {};
+            for (const p of res.data.result) {
+                map[p.symbol] = p.id;
+            }
+            return map;
+        }
+        throw new Error("Invalid response format from Delta");
+    } catch (err: any) {
+        console.error("❌ Failed to fetch Delta products:", err.response?.data || err.message);
+        throw new Error("Failed to load Delta products");
+    }
+}
+
+/**
+ * ✅ Check account balance (optional helper)
+ */
+export async function fetchDeltaBalance(apiKey: string, apiSecret: string) {
+    const path = "/v2/wallet/balances";
+    try {
+        const res = await axios.get(`${DELTA_BASE}${path}`, {
+            headers: getDeltaHeaders(apiKey, apiSecret, "GET", path),
+        });
+        return res.data;
+    } catch (err: any) {
+        console.error("❌ Failed to fetch Delta balance:", err.response?.data || err.message);
+        throw new Error("Failed to get Delta balance");
+    }
+}
+
+/**
+ * ✅ Cancel all open orders (optional helper)
+ */
+export async function cancelAllDeltaOrders(apiKey: string, apiSecret: string) {
+    const path = "/v2/orders/all";
+    try {
+        const res = await axios.delete(`${DELTA_BASE}${path}`, {
+            headers: getDeltaHeaders(apiKey, apiSecret, "DELETE", path),
+        });
+        return res.data;
+    } catch (err: any) {
+        console.error("❌ Failed to cancel Delta orders:", err.response?.data || err.message);
+        throw new Error("Failed to cancel Delta orders");
+    }
+}
+
+/**
+ * 🆕 ✅ Fetch order details by ID (for verification)
+ */
+export async function fetchDeltaOrderById(apiKey: string, apiSecret: string, orderId: string | number) {
+    const path = `/v2/orders/${orderId}`;
+    try {
+        const res = await axios.get(`${DELTA_BASE}${path}`, {
+            headers: getDeltaHeaders(apiKey, apiSecret, "GET", path),
+        });
+        return res.data;
+    } catch (err: any) {
+        console.error("❌ Failed to fetch Delta order by ID:", err.response?.data || err.message);
+        throw new Error("Failed to verify Delta order");
+    }
 }
