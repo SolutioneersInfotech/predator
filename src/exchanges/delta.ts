@@ -145,8 +145,9 @@ export async function placeDeltaOrder(
     const path = "/v2/orders";
 
     // 🧠 FIX HERE: send integer contract size
-    const sizeInt = Math.round(size); // convert 0.01 → 0
-
+    // const sizeInt = Math.round(size); // convert 0.01 → 0
+    const contractMultiplier = 1000; // 1 contract = 0.001 BTC
+    const sizeInt = Math.round(size * contractMultiplier);
     const body: any = {
         product_id,
         side,
