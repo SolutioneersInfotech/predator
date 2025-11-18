@@ -144,18 +144,57 @@ export async function placeDeltaOrder(
 ) {
     const path = "/v2/orders";
 
-    // 🧠 FIX HERE: send integer contract size
-    // const sizeInt = Math.round(size); // convert 0.01 → 0
-    const contractMultiplier = 1000; // 1 contract = 0.001 BTC
-    const sizeInt = Math.round(size * contractMultiplier);
+    // // 🧠 FIX HERE: send integer contract size
+    // // const sizeInt = Math.round(size); // convert 0.01 → 0
+    // const contractMultiplier = 1000; // 1 contract = 0.001 BTC
+    // const sizeInt = Math.round(size * contractMultiplier);
+    // const body: any = {
+    //     product_id,
+    //     side,
+    //     size: sizeInt, // must be integer
+    //     order_type: price ? "limit_order" : "market_order",
+    // };
+
+    // if (price) body.limit_price = price;
+    // Determine contract size from the provided `size` parameter:
+    // - If `size` is an integer > 0, treat it as the contract count directly.
+    // - Otherwise treat `size` as an amount to spend in quote currency (e.g. USDT)
+    //   and convert to contracts using the provided `price` (which must be present).
+    let sizeInt: number;
+    if (Number.isInteger(size) && size > 0) {
+        // `size` already represents integer contracts
+        sizeInt = size;
+    } else {
+        // treat `size` as amount to spend in quote currency (e.g., USDT)
+        const amountToSpend = Number(size); // e.g. 1 USDT
+        // require a valid price to convert spend amount to asset quantity
+        if (!price || price <= 0) {
+            throw new Error(
+                "Current price (limit price) is required to convert spend amount to contracts when `size` is not integer contracts."
+            );
+        }
+        const currentPrice = price;
+        // 1) amount -> BTC quantity
+        const btcQuantity = amountToSpend / currentPrice;
+        // 2) BTC quantity -> contracts convert (1 contract = 0.001 BTC => multiplier 1000)
+        const contractMultiplier = 1000;
+        sizeInt = Math.round(btcQuantity * contractMultiplier); // size must be integer
+        if (sizeInt <= 0) {
+            throw new Error("Calculated contract size is zero; increase amount or provide correct price.");
+        }
+    }
+
+    // 3) final order body
     const body: any = {
         product_id,
         side,
-        size: sizeInt, // must be integer
+        size: sizeInt,
         order_type: price ? "limit_order" : "market_order",
     };
 
+    // limit order ho to price set karenge
     if (price) body.limit_price = price;
+
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const method = "POST";
