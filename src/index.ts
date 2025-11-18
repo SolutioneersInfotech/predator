@@ -11,6 +11,7 @@ import tradeRouter from "./routes/trade.routes.js";
 import { verifyAuth } from "./middlewares/authMiddleware.js";
 import botRoutes from "./routes/botRoutes.js";
 import tradeRoutes from "./routes/tradeRoutes.js";
+import userSyncRoutes from "./routes/userSync.route.js";
 
 import testDeltaRoutes from "./routes/testdelta.routes.js"
 
@@ -54,6 +55,8 @@ app.use('/api/bots', botRoutes);
 app.use("/api", tradeRoutes);
 
 app.use("/api/test", testDeltaRoutes);
+
+app.use("/api/user", userSyncRoutes);
 
 
 
