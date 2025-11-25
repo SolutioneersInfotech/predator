@@ -116,6 +116,8 @@ export const getActiveTrades = async (req: Request, res: Response) => {
         console.log("🔁 Fetching open positions...");
         const positions = await exchange.fetchPositions();
 
+        console.log("📥 RAW DELTA RESPONSE:", positions);
+
         // ✅ Filter active/open positions
         const activePositions = positions.filter(
             (pos: any) => pos.contractSize && pos.contractSize > 0

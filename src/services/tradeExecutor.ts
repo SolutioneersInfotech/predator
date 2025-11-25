@@ -147,27 +147,87 @@
 // }
 
 
+// // services/orderExecutor.ts
+// import ExchangeCredential from "../models/ExchangeCredential.js";
+// import { decryptText } from "../utils/crypto.js";
+// import * as delta from "../exchanges/delta.js";
+// import * as binance from "../exchanges/binance.js"; // ✅ optional
+// import * as bybit from "../exchanges/bybit.js";     // ✅ optional
+
+// export type ExchangeName = "delta" | "binance" | "bybit";
+
+// export interface ExecOrder {
+//     userId: string;
+//     exchange: ExchangeName;
+//     symbol: string; // e.g. BTC-USD or BTCUSDT
+//     side: "BUY" | "SELL";
+//     quantity: number;
+//     price?: number;
+//     type?: "MARKET" | "LIMIT";
+//     product_id?: number; // required for Delta
+// }
+
+// export async function executeOrderForUser(order: ExecOrder) {
+//     const cred = await ExchangeCredential.findOne({
+//         userId: order.userId,
+//         exchange: order.exchange,
+//     }).exec();
+
+//     if (!cred) throw new Error(`Exchange ${order.exchange} not connected for user`);
+
+//     const apiKey = decryptText(cred.apiKey_enc);
+//     const apiSecret = decryptText(cred.apiSecret_enc);
+//     const passphrase = cred.passphrase_enc ? decryptText(cred.passphrase_enc) : undefined;
+
+//     switch (order.exchange.toLowerCase()) {
+//         case "delta": {
+//             if (!order.product_id) throw new Error("Delta requires product_id");
+//             return await delta.placeDeltaOrder(
+//                 apiKey,
+//                 apiSecret,
+//                 order.product_id,
+//                 order.side.toLowerCase() as "buy" | "sell",
+//                 order.quantity,
+//                 order.price
+//             );
+//         }
+
+//         case "binance": {
+//             return await (binance as any).placeBinanceOrder(
+//                 apiKey,
+//                 apiSecret,
+//                 order.symbol,
+//                 order.side.toLowerCase() as "buy" | "sell",
+//                 order.quantity,
+//                 order.price
+//             );
+//         }
+
+//         case "bybit": {
+//             return await bybit.placeBybitOrder(
+//                 apiKey,
+//                 apiSecret,
+//                 order.symbol,
+//                 order.side === "BUY" ? "Buy" : "Sell",
+//                 order.quantity,
+//                 order.price
+//             );
+//         }
+
+//         default:
+//             throw new Error(`Exchange ${order.exchange} not supported`);
+//     }
+// }
+
 // services/orderExecutor.ts
+import TradeLog from "../models/TradeLog.js";
 import ExchangeCredential from "../models/ExchangeCredential.js";
 import { decryptText } from "../utils/crypto.js";
 import * as delta from "../exchanges/delta.js";
-import * as binance from "../exchanges/binance.js"; // ✅ optional
-import * as bybit from "../exchanges/bybit.js";     // ✅ optional
+import * as binance from "../exchanges/binance.js";
+import * as bybit from "../exchanges/bybit.js";
 
-export type ExchangeName = "delta" | "binance" | "bybit";
-
-export interface ExecOrder {
-    userId: string;
-    exchange: ExchangeName;
-    symbol: string; // e.g. BTC-USD or BTCUSDT
-    side: "BUY" | "SELL";
-    quantity: number;
-    price?: number;
-    type?: "MARKET" | "LIMIT";
-    product_id?: number; // required for Delta
-}
-
-export async function executeOrderForUser(order: ExecOrder) {
+export async function executeOrderForUser(order) {
     const cred = await ExchangeCredential.findOne({
         userId: order.userId,
         exchange: order.exchange,
@@ -179,42 +239,75 @@ export async function executeOrderForUser(order: ExecOrder) {
     const apiSecret = decryptText(cred.apiSecret_enc);
     const passphrase = cred.passphrase_enc ? decryptText(cred.passphrase_enc) : undefined;
 
-    switch (order.exchange.toLowerCase()) {
-        case "delta": {
-            if (!order.product_id) throw new Error("Delta requires product_id");
-            return await delta.placeDeltaOrder(
-                apiKey,
-                apiSecret,
-                order.product_id,
-                order.side.toLowerCase() as "buy" | "sell",
-                order.quantity,
-                order.price
-            );
+    // STEP 1: 🔥 BEFORE placing order — create trade log (PENDING)
+    const tradeLog = await TradeLog.create({
+        userId: order.userId,
+        exchange: order.exchange,
+        symbol: order.symbol,
+        side: order.side,
+        size: order.quantity,       // 🔥 IMPORTANT: quantity = size
+        price: order.price,
+        type: order.type || "MARKET",
+        status: "PENDING",
+    });
+
+    let result;
+
+    try {
+        switch (order.exchange.toLowerCase()) {
+            case "delta":
+                result = await delta.placeDeltaOrder(
+                    apiKey,
+                    apiSecret,
+                    order.product_id,
+                    order.side.toLowerCase(),
+                    order.quantity,
+                    order.price
+                );
+                break;
+
+            case "binance":
+                result = await (binance as any).placeBinanceOrder(
+                    apiKey,
+                    apiSecret,
+                    order.symbol,
+                    order.side.toLowerCase(),
+                    order.quantity,
+                    order.price
+                );
+                break;
+
+            case "bybit":
+                result = await bybit.placeBybitOrder(
+                    apiKey,
+                    apiSecret,
+                    order.symbol,
+                    order.side === "BUY" ? "Buy" : "Sell",
+                    order.quantity,
+                    order.price
+                );
+                break;
+
+            default:
+                throw new Error(`Exchange ${order.exchange} not supported`);
         }
 
-        case "binance": {
-            return await (binance as any).placeBinanceOrder(
-                apiKey,
-                apiSecret,
-                order.symbol,
-                order.side.toLowerCase() as "buy" | "sell",
-                order.quantity,
-                order.price
-            );
-        }
+        // STEP 2: 🔥 On SUCCESS → update log
+        await TradeLog.findByIdAndUpdate(tradeLog._id, {
+            status: "SUCCESS",
+            orderId: result?.result?.id || result?.orderId || null,
+            response: result,
+        });
 
-        case "bybit": {
-            return await bybit.placeBybitOrder(
-                apiKey,
-                apiSecret,
-                order.symbol,
-                order.side === "BUY" ? "Buy" : "Sell",
-                order.quantity,
-                order.price
-            );
-        }
+        return result;
 
-        default:
-            throw new Error(`Exchange ${order.exchange} not supported`);
+    } catch (err) {
+        // STEP 3: 🔥 On FAIL → update log
+        await TradeLog.findByIdAndUpdate(tradeLog._id, {
+            status: "FAILED",
+            response: { error: err.message },
+        });
+
+        throw err;
     }
 }

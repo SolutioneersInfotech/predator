@@ -15,6 +15,8 @@ import userSyncRoutes from "./routes/userSync.route.js";
 
 import testDeltaRoutes from "./routes/testdelta.routes.js"
 
+import syncdeltaProducts from "./routes/DeltaProductRoute.js";
+
 
 
 // dotenv.config();
@@ -57,6 +59,7 @@ app.use("/api", tradeRoutes);
 app.use("/api/test", testDeltaRoutes);
 
 app.use("/api/user", userSyncRoutes);
+app.use("/api/delta", syncdeltaProducts);
 
 
 
