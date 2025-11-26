@@ -131,7 +131,9 @@ export const getActiveTrades = async (req: Request, res: Response) => {
             symbol: pos.symbol,
             type: pos.side?.toUpperCase() || "N/A",
             entryPrice: pos.entryPrice || 0,
-            currentPrice: pos.markPrice || 0,
+            // currentPrice: pos.markPrice || 0,
+            currentPrice: Number(pos.markPrice || pos.info?.mark_price || 0),
+
             pnl: pos.unrealizedPnl || 0,
             status: "active",
         }));
