@@ -19,6 +19,7 @@ import syncdeltaProducts from "./routes/DeltaProductRoute.js";
 
 
 
+
 // dotenv.config();
 console.log("MASTER_KEY is:", process.env.MASTER_KEY);
 
@@ -60,6 +61,8 @@ app.use("/api/test", testDeltaRoutes);
 
 app.use("/api/user", userSyncRoutes);
 app.use("/api/delta", syncdeltaProducts);
+
+// app.use("/api/history", deltaHistoryRoutes);
 
 
 

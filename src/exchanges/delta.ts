@@ -301,3 +301,31 @@ export async function fetchDeltaOrderById(apiKey: string, apiSecret: string, ord
         throw new Error("Failed to verify Delta order");
     }
 }
+export async function fetchDeltaOrderHistory(apiKey: string, apiSecret: string) {
+    const path = "/v2/orders/history";
+
+    try {
+        const res = await axios.get(`${DELTA_BASE}${path}`, {
+            headers: getDeltaHeaders(apiKey, apiSecret, "GET", path),
+        });
+
+        return res.data;
+    } catch (err: any) {
+        console.error("❌ Failed to fetch Delta order history:", err.response?.data || err.message);
+        throw new Error("Failed to get Delta order history");
+    }
+}
+export async function fetchDeltaFillsHistory(apiKey: string, apiSecret: string) {
+    const path = "/v2/fills";
+
+    try {
+        const res = await axios.get(`${DELTA_BASE}${path}`, {
+            headers: getDeltaHeaders(apiKey, apiSecret, "GET", path),
+        });
+
+        return res.data;
+    } catch (err: any) {
+        console.error("❌ Failed to fetch Delta fills:", err.response?.data || err.message);
+        throw new Error("Failed to get Delta trade fills");
+    }
+}

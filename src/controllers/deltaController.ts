@@ -4,59 +4,6 @@ import ExchangeCredential from "../models/ExchangeCredential.js";
 import { decryptText } from "../utils/crypto.js";
 import { fetchDeltaBalance } from "../exchanges/delta.js";
 
-// export const getDeltaBalance = async (req: Request, res: Response) => {
-//     try {
-//         const userId = req.query.userId as string;
-//         if (!userId) {
-//             return res.status(400).json({ message: "Missing userId" });
-//         }
-
-//         console.log("🔍 Fetching Delta credentials for user:", userId);
-
-//         // 🔐 Fetch encrypted keys
-//         const creds = await ExchangeCredential.findOne({
-//             userId: new mongoose.Types.ObjectId(userId),
-//             exchange: "delta",
-//         });
-
-//         if (!creds) {
-//             return res.status(404).json({ message: "No Delta API credentials found" });
-//         }
-
-//         // 🔐 Decrypt keys
-//         const apiKey = decryptText(creds.apiKey_enc);
-//         const apiSecret = decryptText(creds.apiSecret_enc);
-
-//         console.log("🔐 Keys decrypted!");
-
-//         // 🔥 Call your existing balance fetch function
-//         const balanceResponse = await fetchDeltaBalance(apiKey, apiSecret);
-
-//         console.log("💰 Delta Balance Raw:", balanceResponse);
-
-//         // 🧮 Format for frontend
-//         const wallet = balanceResponse?.result?.balances || [];
-
-//         const formatted = wallet.map((b: any) => ({
-//             asset: b.asset_symbol,
-//             balance: parseFloat(b.balance),
-//             available: parseFloat(b.available_balance),
-//             locked: parseFloat(b.locked_balance),
-//         }));
-
-//         return res.status(200).json({
-//             message: "Balance fetched successfully",
-//             balances: formatted,
-//         });
-
-//     } catch (error: any) {
-//         console.error("🔥 Error fetching delta balance:", error.response?.data || error.message);
-//         return res.status(500).json({
-//             message: "Failed to fetch delta balance",
-//             error: error.message,
-//         });
-//     }
-// };
 
 export const getDeltaBalance = async (req: Request, res: Response) => {
     try {
