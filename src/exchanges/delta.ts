@@ -329,3 +329,16 @@ export async function fetchDeltaFillsHistory(apiKey: string, apiSecret: string) 
         throw new Error("Failed to get Delta trade fills");
     }
 }
+
+export async function fetchEquityChange(apiKey: string, apiSecret: string) {
+    const path = `/v2/users/account_analytics/equity_change`;
+    try {
+        const res = await axios.get(`${DELTA_BASE}${path}`, {
+            headers: getDeltaHeaders(apiKey, apiSecret, "GET", path),
+        });
+        return res.data;
+    } catch (err: any) {
+        console.error("❌ Failed to fetch Delta order by ID:", err.response?.data || err.message);
+        throw new Error("Failed to verify Delta order");
+    }
+}
