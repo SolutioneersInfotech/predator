@@ -16,7 +16,7 @@ import userSyncRoutes from "./routes/userSync.route.js";
 import testDeltaRoutes from "./routes/testdelta.routes.js"
 
 import syncdeltaProducts from "./routes/DeltaProductRoute.js";
-
+import { botManager } from "./Bot/botManager.js";
 
 
 
@@ -35,6 +35,8 @@ const connectDB = async () => {
             serverSelectionTimeoutMS: 5000, // 5 sec  timeout
         });
         console.log("✅ MongoDB Connected");
+        //resume all bots on server start
+        await botManager.resumeAllOnStartup();
     } catch (err) {
         console.error("❌ MongoDB Connection Error:", err);
         process.exit(1);

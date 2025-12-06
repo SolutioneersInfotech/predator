@@ -1,18 +1,66 @@
-import mongoose from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
-const botSchema = new mongoose.Schema({
-    name: { type: String, required: true, unique: true },
-    strategy_type: { type: String, required: true },
-    timeframe: { type: String, required: true },
-    status: { type: String, default: "stopped" }, // active/stopped/error
-    broker_config: {
-        apiKey: String,
-        apiSecret: String,
-        apiEndpoint: String,
+export interface IBot extends Document {
+  name: string;
+  userId?: string;
+  exchange: string;
+  symbol?: string;
+  quantity?: number;
+  timeframe?: string;
+
+  rsiBuy?: number;
+  rsiSell?: number;
+
+  status: "running" | "stopped" | "paused";
+
+  runtime?: {
+    inPosition: boolean;
+    entryPrice?: number | null;
+    lastActionAt?: number;
+  };
+
+  broker_config?: {
+    apiKey?: string;
+    apiSecret?: string;
+    apiEndpoint?: string;
+  };
+}
+
+const BotSchema = new Schema<IBot>(
+  {
+    name: { type: String, required: true },
+    userId: { type: String },
+
+    exchange: { type: String, required: true },
+    symbol: { type: String },
+    quantity: { type: Number },
+    timeframe: { type: String },
+
+    rsiBuy: { type: Number },
+    rsiSell: { type: Number },
+
+    status: {
+      type: String,
+      enum: ["running", "stopped", "paused"],
+      default: "running",
     },
-    symbol: { type: String, default: "BTC/USDT" },
-    configuration: { type: mongoose.Schema.Types.Mixed },
-    created_at: { type: Date, default: Date.now },
-});
 
-export const BotModel = mongoose.model("Bot", botSchema);
+    runtime: {
+      type: Schema.Types.Mixed,
+      default: {
+        inPosition: false,
+        entryPrice: null,
+        lastActionAt: 0,
+      },
+    },
+
+    broker_config: {
+      apiKey: String,
+      apiSecret: String,
+      apiEndpoint: String,
+    },
+  },
+  { timestamps: true }
+);
+
+export const BotModel = mongoose.model<IBot>("Bot", BotSchema);

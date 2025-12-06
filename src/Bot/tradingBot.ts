@@ -1,212 +1,233 @@
-import 'dotenv/config';
-import ccxt, { Exchange } from 'ccxt';
-import { RSI, EMA } from 'technicalindicators';
-import Bottleneck from 'bottleneck';
-import pino from 'pino';
-import type { BotConfig } from '../types/botTypes.js';
-import { executeOrderForUser } from '../services/tradeExecutor.js';
-import { fetchDeltaProducts, fetchDeltaOrderById } from '../exchanges/delta.js'; // ✅ Added for Delta
+import type { BotConfig } from "../types/botTypes.js";
+import { placeOrderAndAwaitFill } from "../services/orderExecutor.js";
+import { fetchCandlesFromBinance } from "../services/fetchCandles.js";
+import { BotModel } from "../models/BotModel.js";
 
-const logger = pino({ level: 'info' });
-
-interface RunningBot {
-    stopSignal: boolean;
-    loop: Promise<void> | null;
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const activeBots: Record<string, RunningBot> = {};
+// =========================================
+//  LOCAL RSI CALCULATION (TradingView-Style)
+// =========================================
+function computeRSI(closes: number[], period = 14) {
+  const rsiPeriod = period ? Number(period) : 14;
 
-// ✅ Create Exchange Instance
-async function createExchange(apiKey: string, apiSecret: string, apiEndpoint?: string, exchangeName?: string): Promise<Exchange> {
-    const exchangeId = (exchangeName || process.env.EXCHANGE || 'delta').toLowerCase();
-    const exchangeClass = (ccxt as any)[exchangeId];
-    if (!exchangeClass) throw new Error(`Exchange not found: ${exchangeId}`);
+  if (!Number.isFinite(rsiPeriod) || rsiPeriod < 2) {
+    console.warn("Invalid RSI period received:", rsiPeriod);
+  }
 
-    const options: any = {
-        apiKey,
-        secret: apiSecret,
-        enableRateLimit: true,
-        options: { adjustForTimeDifference: true },
+  if (closes.length < rsiPeriod + 1) return NaN;
+
+  let gains = 0;
+  let losses = 0;
+
+  // Sum last N differences
+  for (let i = closes.length - rsiPeriod; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+
+  const avgGain = gains / rsiPeriod;
+  const avgLoss = losses / rsiPeriod;
+
+  if (avgLoss === 0) return 100; // straight uptrend
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
+
+// =========================================
+//  TRADING BOT IMPLEMENTATION
+// =========================================
+export async function startTradingBot(config: BotConfig, botDoc: any) {
+  try {
+    let stopped = false;
+    const symbol = config.symbol;
+    const apiSymbol = symbol.replace("/", ""); // Binance format: BTCUSDT
+    const quantity = Number(
+      config.configuration.quantity ?? config.quantity ?? 0.001
+    );
+    const userId = botDoc.userId;
+    const rsiBuy = Number(
+      config.configuration.oversold ?? config.configuration.rsiBuy ?? 30
+    );
+    const rsiSell = Number(
+      config.configuration.overbought ?? config.configuration.rsiSell ?? 70
+    );
+    const rsiPeriod = Number(config.configuration.period ?? 14);
+
+    // =========================================
+    //  INTERNAL BOT STATE (persisted to DB)
+    // =========================================
+    let state = {
+      inPosition: false,
+      entryPrice: null as number | null,
+      lastActionAt: 0,
+      cooldownMs: 3000,
     };
 
-    if (apiEndpoint) {
-        options.urls = { api: { public: apiEndpoint, private: apiEndpoint } };
+    // Load previous runtime from DB if available
+    if (botDoc.runtime) {
+      state = {
+        ...state,
+        ...botDoc.runtime,
+      };
     }
 
-    const exchange = new exchangeClass(options);
-    logger.info(`🔗 Exchange instance created: ${exchangeId}`);
-    return exchange;
-}
-
-// ✅ Start Trading Bot
-export async function startTradingBot(config: BotConfig & { userId?: string }) {
-    if (activeBots[config.name]) {
-        logger.warn(`⚠️ Bot ${config.name} is already running.`);
-        return;
+    // Persist runtime in DB
+    async function persistRuntime() {
+      await BotModel.findByIdAndUpdate(
+        botDoc.id,
+        { runtime: state },
+        { new: true }
+      );
     }
 
-    const bot: RunningBot = { stopSignal: false, loop: null };
-    activeBots[config.name] = bot;
+    console.log(`[BOT ${botDoc.id}] Started bot`);
 
-    const { timeframe, strategy_type, configuration, broker_config, symbol, userId } = config;
-    const exchangeName = (broker_config as any)?.exchange || process.env.EXCHANGE || 'delta';
-    const exchange = await createExchange(
-        broker_config.apiKey,
-        broker_config.apiSecret,
-        broker_config.apiEndpoint,
-        exchangeName
-    );
+    // =========================================
+    //  STOP HANDLER (botManager will call this)
+    // =========================================
+    const stop = async () => {
+      stopped = true;
+      console.log(`[BOT ${botDoc.id}] Stopped`);
+    };
 
-    const limiter = new Bottleneck({ minTime: 300 });
-    const tradingSymbol = symbol || 'BTC/USDT';
-    const pollInterval = 15000; // 15s
+    // =========================================
+    //  MAIN LOOP
+    // =========================================
+    (async function loop() {
+      while (!stopped) {
+        try {
+          const timeframe = config.timeframe ?? "1m";
 
-    // 🟢 Fetch Delta products once
-    let deltaProductMap: Record<string, number> = {};
-    if (exchangeName === 'delta') {
-        logger.info('📦 Loading Delta product list...');
-        deltaProductMap = await fetchDeltaProducts();
-        logger.info(`✅ Loaded ${Object.keys(deltaProductMap).length} products.`);
-    }
+          // -----------------------------------------
+          // 🔵 STEP 1: Loop start log
+          // -----------------------------------------
+          console.log(
+            `[BOT ${botDoc.id}] Loop | TF=${timeframe} | inPosition=${state.inPosition} | lastAction=${state.lastActionAt}`
+          );
 
-    bot.loop = (async () => {
-        logger.info(`🚀 Starting bot: ${config.name}`);
+          console.log("config loop -",config);
+                    console.log("botDoc loop -",botDoc);
 
-        let lastRsi: number | null = null;
-        let position: { side: 'long' | 'short'; entry: number } | null = null;
-        let lastSignal: 'buy' | 'sell' | null = null;
 
-        await exchange.loadMarkets();
+          // -----------------------------------------
+          // 🔵 STEP 2: Fetch candles
+          // -----------------------------------------
+          console.log(`[BOT ${botDoc.id}] Fetching candles...`);
+          const candles = await fetchCandlesFromBinance(
+            apiSymbol,
+            timeframe,
+            200
+          );
 
-        while (!bot.stopSignal) {
-            try {
-                const ohlcv = await limiter.schedule(() =>
-                    exchange.fetchOHLCV(tradingSymbol, timeframe, undefined, 200)
-                );
+          const closes = candles.map((c) => c.close);
+          const rsi = computeRSI(closes, rsiPeriod);
 
-                if (!ohlcv.length) continue;
+          // Log RSI
+          console.log(
+            `[BOT ${botDoc.id}] RSI=${rsi} | Buy<=${rsiBuy} | Sell>=${rsiSell}`
+          );
 
-                const closes = ohlcv.map(c => c[4]);
-                const lastClose = closes.at(-1)!;
+          const now = Date.now();
 
-                const rsiPeriod = parseInt(configuration.period || '14');
-                const oversold = parseFloat(configuration.oversold || '30');
-                const overbought = parseFloat(configuration.overbought || '70');
+          // -----------------------------------------
+          // 🔵 STEP 3: BUY SIGNAL
+          // -----------------------------------------
+          if (
+            !state.inPosition &&
+            Number.isFinite(rsi) &&
+            rsi <= rsiBuy &&
+            now - state.lastActionAt > state.cooldownMs
+          ) {
+            console.log(`[BOT ${botDoc.id}] BUY SIGNAL TRIGGERED`);
+            console.log("symbol in trading bot",apiSymbol);
+            const order = await placeOrderAndAwaitFill({
+              userId,
+              exchangeName:
+                botDoc.exchange ??
+                "delta",
+              symbol: "BTCUSD",
+              side: "buy",
+              amount: quantity,
+              type: "market",
+            });
 
-                const rsiArr = RSI.calculate({ period: rsiPeriod, values: closes });
-                const emaArr = EMA.calculate({ period: 50, values: closes });
-                if (!rsiArr.length) continue;
+            const filled = Number(order?.filled ?? order?.amount ?? 0);
 
-                const currentRsi = rsiArr.at(-1)!;
-                const prevRsi = lastRsi;
-                lastRsi = currentRsi;
-                const currentEma = emaArr.at(-1)!;
+            if (filled > 0) {
+              state.inPosition = true;
+              state.entryPrice = Number(order?.price ?? order?.average ?? null);
+              state.lastActionAt = Date.now();
 
-                const bullish = lastClose > currentEma;
-                const oversoldCross = prevRsi !== null && prevRsi < oversold && currentRsi >= oversold;
-                const overboughtCross = prevRsi !== null && prevRsi > overbought && currentRsi <= overbought;
+              console.log(
+                `[BOT ${botDoc.id}] BUY FILLED | price=${state.entryPrice} | qty=${quantity}`
+              );
 
-                // 🟢 BUY SIGNAL
-                if (!position && oversoldCross && bullish && lastSignal !== 'buy') {
-                    logger.info(`${config.name}: 🟢 Buy signal`);
-                    lastSignal = 'buy';
-                    try {
-                        let product_id: number | undefined;
-                        if (exchangeName === 'delta') {
-                            // ✅ frontend already sends correct symbol (e.g. "BTCUSDT" or "BTC/USDT")
-                            product_id = deltaProductMap[tradingSymbol];
-                        }
-
-                        const result = await executeOrderForUser({
-                            userId: userId || 'unknown',
-                            exchange: exchangeName as any,
-                            symbol: tradingSymbol,
-                            side: 'BUY',
-                            quantity: Number((configuration as any).quantity ?? 0.01),
-                            type: 'MARKET',
-                            product_id,
-                        });
-
-                        logger.info({ result }, '✅ BUY executed');
-                        position = { side: 'long', entry: lastClose };
-
-                        // ✅ Verify order status (Delta only)
-                        if (exchangeName === 'delta' && result?.result?.id) {
-                            const verify = await fetchDeltaOrderById(
-                                broker_config.apiKey,
-                                broker_config.apiSecret,
-                                result.result.id
-                            );
-                            logger.info({ verify }, '📦 Order verified on Delta');
-                        }
-                    } catch (err) {
-                        logger.error({ err }, '❌ Failed to execute BUY');
-                    }
-                }
-
-                // 🔴 SELL SIGNAL
-                if (position && position.side === 'long' && overboughtCross && lastSignal !== 'sell') {
-                    logger.info(`${config.name}: 🔴 Sell signal`);
-                    lastSignal = 'sell';
-                    try {
-                        let product_id: number | undefined;
-                        if (exchangeName === 'delta') {
-                            product_id =
-                                deltaProductMap[tradingSymbol];
-                        }
-
-                        const result = await executeOrderForUser({
-                            userId: userId || 'unknown',
-                            exchange: exchangeName as any,
-                            symbol: tradingSymbol,
-                            side: 'SELL',
-                            quantity: Number((configuration as any).quantity ?? 0.01),
-                            type: 'MARKET',
-                            product_id,
-                        });
-
-                        logger.info({ result }, '✅ SELL executed');
-                        position = null;
-
-                        if (exchangeName === 'delta' && result?.result?.id) {
-                            const verify = await fetchDeltaOrderById(
-                                broker_config.apiKey,
-                                broker_config.apiSecret,
-                                result.result.id
-                            );
-                            logger.info({ verify }, '📦 Sell order verified on Delta');
-                        }
-                    } catch (err) {
-                        logger.error({ err }, '❌ Failed to execute SELL');
-                    }
-                }
-            } catch (err) {
-                logger.error({ err }, '❌ Error in trading loop');
+              await persistRuntime();
             }
+          }
 
-            await new Promise(r => setTimeout(r, pollInterval));
+          // -----------------------------------------
+          // 🔵 STEP 4: SELL SIGNAL
+          // -----------------------------------------
+          if (
+            state.inPosition &&
+            Number.isFinite(rsi) &&
+            rsi >= rsiSell &&
+            now - state.lastActionAt > state.cooldownMs
+          ) {
+            console.log(`[BOT ${botDoc.id}] SELL SIGNAL TRIGGERED`);
+
+            const order = await placeOrderAndAwaitFill({
+              userId,
+              exchangeName:
+                config.broker_config.apiEndpoint ??
+                config.broker_config.apiKey ??
+                "",
+              symbol,
+              side: "sell",
+              amount: quantity,
+              type: "market",
+            });
+
+            const filled = Number(order?.filled ?? order?.amount ?? 0);
+
+            if (filled > 0) {
+              const exitPrice = Number(order?.price ?? order?.average ?? null);
+
+              state.inPosition = false;
+              state.entryPrice = null;
+              state.lastActionAt = Date.now();
+
+              console.log(
+                `[BOT ${botDoc.id}] SELL FILLED | price=${exitPrice} | qty=${quantity}`
+              );
+
+              await persistRuntime();
+            }
+          }
+
+          // -----------------------------------------
+          // 🔵 STEP 5: Sleep
+          // -----------------------------------------
+          await sleep(4000);
+        } catch (err: any) {
+          console.error(
+            `[BOT ${botDoc.id}] ERROR in loop:`,
+            err?.message || err
+          );
+          await sleep(4000);
         }
-
-        logger.info(`🛑 Bot ${config.name} stopped.`);
+      }
     })();
-}
 
-// ✅ Stop Bot
-export function stopTradingBot(name: string) {
-    const bot = activeBots[name];
-    if (!bot) return false;
-    bot.stopSignal = true;
-    delete activeBots[name];
-    logger.info(`🛑 Stop signal sent to bot: ${name}`);
-    return true;
+    // Return stop handler to manager
+    return stop;
+  } catch (err) {
+    console.error(`[BOT ${botDoc.id}] ERROR starting bot:`, err);
+    throw err;
+  }
 }
-
-export function getBotStatus(name: string) {
-    return !!activeBots[name];
-}
-
-export function getAllRunningBots() {
-    return Object.keys(activeBots);
-}
-
-export { activeBots };

@@ -1,60 +1,9 @@
-// // exchanges/delta.ts
-// import axios from "axios";
-// import crypto from "crypto";
-
-// // const DELTA_BASE = "https://api.delta.exchange";
-// const DELTA_BASE = "https://cdn-ind.testnet.deltaex.org";
-
-// function getDeltaHeaders(apiKey: string, apiSecret: string, method: string, path: string, body: any = {}) {
-//     const ts = Math.floor(Date.now() / 1000);
-//     const bodyStr = Object.keys(body).length ? JSON.stringify(body) : "";
-//     const pre = `${ts}${method.toUpperCase()}${path}${bodyStr}`;
-//     const signature = crypto.createHmac("sha256", apiSecret).update(pre).digest("hex");
-//     return {
-//         "api-key": apiKey,
-//         "timestamp": ts,
-//         "signature": signature,
-//         "Content-Type": "application/json",
-//     };
-// }
-
-// export async function placeDeltaOrder(apiKey: string, apiSecret: string, product_id: number, side: "buy" | "sell", size: number, price?: number) {
-//     const path = "/v2/orders";
-//     const body: any = { product_id, side, size, order_type: price ? "limit_order" : "market_order" };
-//     if (price) body.limit_price = price;
-//     const res = await axios.post(`${DELTA_BASE}${path}`, body, { headers: getDeltaHeaders(apiKey, apiSecret, "POST", path, body) });
-//     return res.data;
-// }
-
-
 import axios from "axios";
 import crypto from "crypto";
 
 // ✅ Dynamic Base URL (Testnet or Mainnet)
 const DELTA_BASE = "https://cdn-ind.testnet.deltaex.org";
 
-/**
- * ✅ Create signed headers for Delta Exchange API
- */
-// function getDeltaHeaders(
-//     apiKey: string,
-//     apiSecret: string,
-//     method: string,
-//     path: string,
-//     body: any = {}
-// ) {
-//     const ts = Math.floor(Date.now() / 1000); // timestamp in seconds
-//     const bodyStr = Object.keys(body).length ? JSON.stringify(body) : "";
-//     const preSign = `${ts}${method.toUpperCase()}${path}${bodyStr}`;
-//     const signature = crypto.createHmac("sha256", apiSecret).update(preSign).digest("hex");
-
-//     return {
-//         "api-key": apiKey,
-//         "timestamp": ts,
-//         "signature": signature,
-//         "Content-Type": "application/json",
-//     };
-// }
 function getDeltaHeaders(
     apiKey: string,
     apiSecret: string,
@@ -99,41 +48,7 @@ function getDeltaHeaders(
     };
 }
 
-/**
- * ✅ Place a new order on Delta Exchange
- * Works for both MARKET and LIMIT orders
- */
-// export async function placeDeltaOrder(
-//     apiKey: string,
-//     apiSecret: string,
-//     product_id: number,
-//     side: "buy" | "sell",
-//     size: number,
-//     price?: number
-// ) {
-//     const path = "/v2/orders";
-//     const body: any = {
-//         product_id,
-//         side,
-//         size,
-//         order_type: price ? "limit_order" : "market_order",
-//     };
-//     if (price) body.limit_price = price;
 
-//     try {
-//         const res = await axios.post(`${DELTA_BASE}${path}`, body, {
-//             headers: getDeltaHeaders(apiKey, apiSecret, "POST", path, body),
-//         });
-//         return res.data;
-//     } catch (err: any) {
-//         if (err.response) {
-//             console.error("❌ Delta API Error:", err.response.data);
-//             throw new Error(`Delta API Error: ${err.response.data.error?.message || "Unknown error"}`);
-//         }
-//         console.error("❌ Network/Unknown Error:", err.message);
-//         throw new Error("Failed to place Delta order");
-//     }
-// }
 export async function placeDeltaOrder(
     apiKey: string,
     apiSecret: string,

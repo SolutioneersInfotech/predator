@@ -22,7 +22,6 @@ export async function fetchCandlesFromBinance(symbol: string, interval = "1d", l
     if (!resp || !resp.data) throw new Error("Failed to fetch candles");
     const raw = resp.data;
 
-    console.log("Raw candle data:", raw);
 
     return raw.map((r: any) => ({
         time: r[0],
