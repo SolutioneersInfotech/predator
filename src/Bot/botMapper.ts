@@ -26,12 +26,6 @@ export function convertBotDocToBotConfig(bot: IBot): BotConfig {
       quantity: bot.quantity,
     },
 
-    broker_config: {
-      apiKey: bot.broker_config?.apiKey ?? "",
-      apiSecret: bot.broker_config?.apiSecret ?? "",
-      apiEndpoint: bot.broker_config?.apiEndpoint ?? bot.exchange ?? "",
-    },
-
     symbol: bot.symbol,
   };
 }

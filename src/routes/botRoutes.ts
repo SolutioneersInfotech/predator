@@ -13,21 +13,15 @@ router.post("/", async (req, res) => {
     const botDoc = await BotModel.create({
       name: req.body.name,
       userId: req.body.userId,
-
+      configuration: req.body.configuration,
       exchange: req.body.exchange,
       symbol: req.body.symbol,
       quantity: req.body.configuration.quantity,
-
+      brokerId: req.body.brokerId,
       timeframe: req.body.timeframe,
       rsiBuy: req.body.configuration.oversold,
       rsiSell: req.body.configuration.overbought,
-
-      broker_config: {
-        apiKey: req.body.apiKey,
-        apiSecret: req.body.apiSecret,
-        apiEndpoint: req.body.apiEndpoint,
-      },
-
+      strategy_type: req.body.strategy_type,
       status: "running",
     });
 
@@ -74,7 +68,7 @@ router.put("/:id/status", async (req, res) => {
     const botDoc = await BotModel.findById(id);
     if (!botDoc) return res.status(404).json({ error: "Bot not found" });
 
-    if (status === "active") {
+    if (status === "running") {
       await botManager.startBot(botDoc);
     } else if (status === "stopped") {
       await botManager.stopBot(id);
@@ -120,7 +114,7 @@ router.get("/", async (req, res) => {
 
     const botsWithStatus = bots.map((bot) => ({
       ...bot.toObject(),
-      status: runningIds.includes(bot.id) ? "active" : bot.status,
+      status: runningIds.includes(bot.id) ? "running" : bot.status,
     }));
 
     return res.json(botsWithStatus);

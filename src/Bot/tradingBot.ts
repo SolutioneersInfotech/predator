@@ -46,7 +46,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
     const symbol = config.symbol;
     const apiSymbol = symbol.replace("/", ""); // Binance format: BTCUSDT
     const quantity = Number(
-      config.configuration.quantity ?? config.quantity ?? 0.001
+      config.configuration.quantity ?? 0.01
     );
     const userId = botDoc.userId;
     const rsiBuy = Number(
@@ -184,10 +184,9 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             const order = await placeOrderAndAwaitFill({
               userId,
               exchangeName:
-                config.broker_config.apiEndpoint ??
-                config.broker_config.apiKey ??
-                "",
-              symbol,
+                botDoc.exchange ??
+                "delta",
+              symbol: "BTCUSD",
               side: "sell",
               amount: quantity,
               type: "market",

@@ -16,11 +16,5 @@ export interface BotConfig {
     quantity?: number;
   };
 
-  broker_config: {
-    apiKey: string;
-    apiSecret: string;
-    apiEndpoint?: string; // optional text ID of exchange or endpoint string
-  };
-
   symbol?: string;
 }

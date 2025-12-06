@@ -7,23 +7,18 @@ export interface IBot extends Document {
   symbol?: string;
   quantity?: number;
   timeframe?: string;
-
+  strategy_type: string;
   rsiBuy?: number;
   rsiSell?: number;
-
+  brokerId?: string;
   status: "running" | "stopped" | "paused";
-
+  configuration:any;
   runtime?: {
     inPosition: boolean;
     entryPrice?: number | null;
     lastActionAt?: number;
   };
 
-  broker_config?: {
-    apiKey?: string;
-    apiSecret?: string;
-    apiEndpoint?: string;
-  };
 }
 
 const BotSchema = new Schema<IBot>(
@@ -35,9 +30,19 @@ const BotSchema = new Schema<IBot>(
     symbol: { type: String },
     quantity: { type: Number },
     timeframe: { type: String },
-
+    strategy_type: { type: String, enum: ["RSI", "Custom"], required: true },
     rsiBuy: { type: Number },
     rsiSell: { type: Number },
+
+    brokerId: {
+      type: String,
+      required: true,
+    },
+
+    configuration: {
+      type: mongoose.Schema.Types.Mixed,
+      required: true,
+    },
 
     status: {
       type: String,
@@ -52,13 +57,7 @@ const BotSchema = new Schema<IBot>(
         entryPrice: null,
         lastActionAt: 0,
       },
-    },
-
-    broker_config: {
-      apiKey: String,
-      apiSecret: String,
-      apiEndpoint: String,
-    },
+    }
   },
   { timestamps: true }
 );
