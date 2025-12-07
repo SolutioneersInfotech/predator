@@ -1,6 +1,7 @@
 import express from "express";
 import { BotModel } from "../models/BotModel.js";
 import { botManager } from "../Bot/botManager.js";
+import { getBotPnl, getBotTrades } from "../controllers/botHistoryController.js";
 
 const router = express.Router();
 
@@ -140,6 +141,23 @@ router.delete("/:id", async (req, res) => {
     console.error("Error deleting bot:", err);
     return res.status(500).json({ error: err.message });
   }
+});
+
+/* ==========================
+   ✅ GET BOT TRADES
+   GET /api/bots/:id/trades
+========================== */
+router.get("/:id/trades", async (req, res) => {
+  // delegate to controller
+  return getBotTrades(req as any, res as any);
+});
+
+/* ==========================
+   ✅ GET BOT PNL
+   GET /api/bots/:id/pnl
+========================== */
+router.get("/:id/pnl", async (req, res) => {
+  return getBotPnl(req as any, res as any);
 });
 
 export default router;

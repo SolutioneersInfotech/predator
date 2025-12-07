@@ -1,128 +1,32 @@
-// import mongoose from "mongoose";
-
-// const tradeLogSchema = new mongoose.Schema(
-//     {
-//         userId: {
-//             type: mongoose.Schema.Types.ObjectId,
-//             ref: "User",
-//             required: true,
-//         },
-//         exchange: {
-//             type: String,
-//             required: true,
-//             enum: ["delta", "binance", "bybit", "okx"], // ✅ extend as needed
-//         },
-//         symbol: {
-//             type: String,
-//             required: true,
-//         },
-//         side: {
-//             type: String,
-//             enum: ["BUY", "SELL"],
-//             required: true,
-//         },
-//         quantity: {
-//             type: Number,
-//             required: true,
-//         },
-//         price: {
-//             type: Number,
-//         },
-//         type: {
-//             type: String,
-//             enum: ["MARKET", "LIMIT"],
-//             default: "MARKET",
-//         },
-//         status: {
-//             type: String,
-//             enum: ["PENDING", "SUCCESS", "FAILED"],
-//             default: "SUCCESS",
-//         },
-//         orderId: {
-//             type: String,
-//         },
-//         response: {
-//             type: Object, // ✅ store full API response for debugging / tracking
-//         },
-//         createdAt: {
-//             type: Date,
-//             default: Date.now,
-//         },
-//     },
-//     { timestamps: true }
-// );
-
-// const TradeLog = mongoose.model("TradeLog", tradeLogSchema);
-
-// export default TradeLog;
-
-
+// src/models/TradeLog.ts
 import mongoose from "mongoose";
 
-const tradeLogSchema = new mongoose.Schema(
-    {
-        userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-            required: true,
-        },
+const TradeLogSchema = new mongoose.Schema(
+  {
+    botId: { type: String, required: true, index: true }, // reference to BotModel._id
+    userId: { type: String, required: true, index: true },
 
-        exchange: {
-            type: String,
-            required: true,
-            enum: ["delta", "binance", "bybit", "okx"],
-        },
+    exchange: { type: String, required: true },
+    symbol: { type: String, required: true }, // normalized symbol used for the trade
 
-        symbol: {
-            type: String,
-            required: true,
-        },
+    side: { type: String, enum: ["buy", "sell"], required: true },
+    type: { type: String, enum: ["market", "limit", "ioc", "post_only"], default: "market" },
 
-        side: {
-            type: String,
-            enum: ["BUY", "SELL"],
-            required: true,
-        },
+    amount: { type: Number, required: true },
+    price: { type: Number, required: true },
 
-        // 🔥 Actual contract size (Delta requires integer)
-        size: {
-            type: Number,
-            required: true,
-        },
+    orderId: { type: String }, // exchange order id if available
 
-        // optional: user input amount (e.g. 1 USDT)
-        amountSpent: {
-            type: Number,
-        },
+    // Realized pnl for this trade (for sell trades this should be (sellPrice - entryPrice) * qty)
+    pnl: { type: Number, default: null },
 
-        // optional: final executed price
-        price: {
-            type: Number,
-        },
+    // optional free-form exchange response (can be used for debugging)
+    rawResponse: { type: mongoose.Schema.Types.Mixed },
 
-        type: {
-            type: String,
-            enum: ["MARKET", "LIMIT"],
-            default: "MARKET",
-        },
-
-        status: {
-            type: String,
-            enum: ["PENDING", "SUCCESS", "FAILED"],
-            default: "SUCCESS",
-        },
-
-        orderId: {
-            type: String,
-        },
-
-        response: {
-            type: Object,
-        },
-    },
-    { timestamps: true }
+    // closedAt if this trade is an exit (duplicate optional)
+    closedAt: { type: Date, default: null },
+  },
+  { timestamps: true }
 );
 
-const TradeLog = mongoose.model("TradeLog", tradeLogSchema);
-
-export default TradeLog;
+export default mongoose.model("TradeLog", TradeLogSchema);

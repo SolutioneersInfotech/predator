@@ -2,6 +2,7 @@ import type { BotConfig } from "../types/botTypes.js";
 import { placeOrderAndAwaitFill } from "../services/orderExecutor.js";
 import { fetchCandlesFromBinance } from "../services/fetchCandles.js";
 import { BotModel } from "../models/BotModel.js";
+import TradeLog from "../models/TradeLog.js";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,9 +46,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
     let stopped = false;
     const symbol = config.symbol;
     const apiSymbol = symbol.replace("/", ""); // Binance format: BTCUSDT
-    const quantity = Number(
-      config.configuration.quantity ?? 0.01
-    );
+    const quantity = Number(config.configuration.quantity ?? 0.01);
     const userId = botDoc.userId;
     const rsiBuy = Number(
       config.configuration.oversold ?? config.configuration.rsiBuy ?? 30
@@ -109,9 +108,8 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             `[BOT ${botDoc.id}] Loop | TF=${timeframe} | inPosition=${state.inPosition} | lastAction=${state.lastActionAt}`
           );
 
-          console.log("config loop -",config);
-                    console.log("botDoc loop -",botDoc);
-
+          console.log("config loop -", config);
+          console.log("botDoc loop -", botDoc);
 
           // -----------------------------------------
           // 🔵 STEP 2: Fetch candles
@@ -143,12 +141,10 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             now - state.lastActionAt > state.cooldownMs
           ) {
             console.log(`[BOT ${botDoc.id}] BUY SIGNAL TRIGGERED`);
-            console.log("symbol in trading bot",apiSymbol);
+            console.log("symbol in trading bot", apiSymbol);
             const order = await placeOrderAndAwaitFill({
               userId,
-              exchangeName:
-                botDoc.exchange ??
-                "delta",
+              exchangeName: botDoc.exchange ?? "delta",
               symbol: "BTCUSD",
               side: "buy",
               amount: quantity,
@@ -156,6 +152,33 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             });
 
             const filled = Number(order?.filled ?? order?.amount ?? 0);
+
+            // --- BUY TRADE LOGGING ---
+            try {
+              const price = Number(
+                order?.price ?? order?.average ?? closes[closes.length - 1]
+              );
+
+              if (filled > 0) {
+                await TradeLog.create({
+                  botId: botDoc._id?.toString?.() ?? botDoc.id,
+                  userId: botDoc.userId,
+                  exchange: botDoc.exchange,
+                  symbol: botDoc.symbol,
+                  side: "buy",
+                  type: order?.type ?? "market",
+                  amount: filled,
+                  price,
+                  orderId: order?.id,
+                  rawResponse: order,
+                });
+              }
+            } catch (err) {
+              console.error(
+                `[BOT ${botDoc?.id}] failed to write BUY trade log:`,
+                err
+              );
+            }
 
             if (filled > 0) {
               state.inPosition = true;
@@ -183,9 +206,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
 
             const order = await placeOrderAndAwaitFill({
               userId,
-              exchangeName:
-                botDoc.exchange ??
-                "delta",
+              exchangeName: botDoc.exchange ?? "delta",
               symbol: "BTCUSD",
               side: "sell",
               amount: quantity,
@@ -193,6 +214,44 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             });
 
             const filled = Number(order?.filled ?? order?.amount ?? 0);
+
+            // --- SELL TRADE LOGGING + REALIZED PNL ---
+            try {
+              const price = Number(
+                order?.price ?? order?.average ?? closes[closes.length - 1]
+              );
+
+              if (filled > 0) {
+                let pnl: number | null = null;
+
+                if (
+                  state.entryPrice !== null &&
+                  Number.isFinite(state.entryPrice)
+                ) {
+                  pnl = (price - state.entryPrice) * filled;
+                }
+
+                await TradeLog.create({
+                  botId: botDoc._id?.toString?.() ?? botDoc.id,
+                  userId: botDoc.userId,
+                  exchange: botDoc.exchange,
+                  symbol: botDoc.symbol,
+                  side: "sell",
+                  type: order?.type ?? "market",
+                  amount: filled,
+                  price,
+                  orderId: order?.id,
+                  pnl,
+                  closedAt: new Date(),
+                  rawResponse: order,
+                });
+              }
+            } catch (err) {
+              console.error(
+                `[BOT ${botDoc?.id}] failed to write SELL trade log:`,
+                err
+              );
+            }
 
             if (filled > 0) {
               const exitPrice = Number(order?.price ?? order?.average ?? null);
