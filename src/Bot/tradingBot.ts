@@ -3,6 +3,7 @@ import { placeOrderAndAwaitFill } from "../services/orderExecutor.js";
 import { fetchCandlesFromBinance } from "../services/fetchCandles.js";
 import { BotModel } from "../models/BotModel.js";
 import TradeLog from "../models/TradeLog.js";
+import { publishTrade, publishRuntime } from "../ws/wsServer.js";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -81,6 +82,35 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
         { runtime: state },
         { new: true }
       );
+      try {
+        // compute unrealized pnl if in position
+        let computedPnl = 0;
+        if (state.inPosition && state.entryPrice != null) {
+          const qty = Number(
+            config.configuration?.quantity ?? config.quantity ?? 0
+          );
+          // fetch latest price quickly (use your price/candle service)
+          try {
+            const fetchSymbol = (config.symbol ?? "")
+              .replace("/", "");
+              // .replace(/-PERP$/i, "");
+            const candles = await fetchCandlesFromBinance(fetchSymbol, "1m", 1);
+            const latest = Number(candles?.[candles.length - 1]?.close ?? 0);
+            if (latest > 0 && qty > 0) {
+              computedPnl = (latest - Number(state.entryPrice)) * qty;
+            }
+          } catch (err) {
+            computedPnl = 0;
+          }
+        }
+        publishRuntime(botDoc._id?.toString?.() ?? botDoc.id, {
+          runtime: state,
+          unrealizedPnl: computedPnl,
+          timestamp: Date.now(),
+        });
+      } catch (e) {
+        // ignore publish errors
+      }
     }
 
     console.log(`[BOT ${botDoc.id}] Started bot`);
@@ -180,6 +210,34 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
               );
             }
 
+            const price = Number(
+              order?.price ?? order?.average ?? closes[closes.length - 1]
+            );
+
+            console.log("7dec------Price in trading bot loop======>", price);
+            console.log(
+              "7dec------order in trading bot loop - does it contain price======>",
+              order
+            );
+
+            publishTrade(botDoc.id, {
+              price,
+              createdAt: new Date(),
+              orderId: order?.id,
+            });
+
+            try {
+              publishTrade(botDoc._id?.toString?.() ?? botDoc.id, {
+                side: "buy",
+                amount: filled,
+                price,
+                createdAt: new Date(),
+                orderId: order?.id,
+              });
+            } catch (e) {
+              console.warn(`[WS] publishTrade failed:`, e);
+            }
+
             if (filled > 0) {
               state.inPosition = true;
               state.entryPrice = Number(order?.price ?? order?.average ?? null);
@@ -245,6 +303,19 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
                   closedAt: new Date(),
                   rawResponse: order,
                 });
+
+                try {
+                  publishTrade(botDoc._id?.toString?.() ?? botDoc.id, {
+                    side: "sell",
+                    amount: filled,
+                    price,
+                    pnl,
+                    createdAt: new Date(),
+                    orderId: order?.id,
+                  });
+                } catch (e) {
+                  console.warn(`[WS] publishTrade failed:`, e);
+                }
               }
             } catch (err) {
               console.error(

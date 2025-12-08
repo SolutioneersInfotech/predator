@@ -2,6 +2,8 @@ import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
 import cors from "cors";
+import http from "http";
+import { startWebSocketServer } from "./ws/wsServer.js";
 
 import mongoose from "mongoose";
 import strategyRouter from "./routes/strategy.routes.js";
@@ -73,8 +75,16 @@ app.use("/api/delta", syncdeltaProducts);
 // Start server after DB connection
 const PORT = Number(process.env.PORT || 3000);
 connectDB().then(() => {
-    app.listen(PORT, () => {
+    // Create HTTP server
+    const server = http.createServer(app);
+
+    // Start WebSocket server on same port
+    startWebSocketServer(server);
+
+    // Start Express HTTP server
+    server.listen(PORT, () => {
         console.log(`🚀 Server running on http://localhost:${PORT}`);
+        console.log(`🔌 WebSocket running on ws://localhost:${PORT}`);
     });
 });
 
