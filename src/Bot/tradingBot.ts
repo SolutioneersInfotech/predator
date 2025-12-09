@@ -4,6 +4,7 @@ import { fetchCandlesFromBinance } from "../services/fetchCandles.js";
 import { BotModel } from "../models/BotModel.js";
 import TradeLog from "../models/TradeLog.js";
 import { publishTrade, publishRuntime } from "../ws/wsServer.js";
+import { computeContractSize } from "../services/deltaProductService.js";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,7 +88,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
         let computedPnl = 0;
         if (state.inPosition && state.entryPrice != null) {
           const qty = Number(
-            config.configuration?.quantity ?? config.quantity ?? 0
+            config.configuration?.quantity ?? 0
           );
           // fetch latest price quickly (use your price/candle service)
           try {
@@ -96,6 +97,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
               // .replace(/-PERP$/i, "");
             const candles = await fetchCandlesFromBinance(fetchSymbol, "1m", 1);
             const latest = Number(candles?.[candles.length - 1]?.close ?? 0);
+            console.log("debug latest =====> ",latest);
             if (latest > 0 && qty > 0) {
               computedPnl = (latest - Number(state.entryPrice)) * qty;
             }
@@ -175,7 +177,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             const order = await placeOrderAndAwaitFill({
               userId,
               exchangeName: botDoc.exchange ?? "delta",
-              symbol: "BTCUSD",
+              symbol: apiSymbol,
               side: "buy",
               amount: quantity,
               type: "market",
@@ -186,7 +188,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             // --- BUY TRADE LOGGING ---
             try {
               const price = Number(
-                order?.price ?? order?.average ?? closes[closes.length - 1]
+                order?.average ?? closes[closes.length - 1]
               );
 
               if (filled > 0) {
@@ -211,7 +213,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             }
 
             const price = Number(
-              order?.price ?? order?.average ?? closes[closes.length - 1]
+              order?.average
             );
 
             console.log("7dec------Price in trading bot loop======>", price);
@@ -240,7 +242,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
 
             if (filled > 0) {
               state.inPosition = true;
-              state.entryPrice = Number(order?.price ?? order?.average ?? null);
+              state.entryPrice = Number(order?.average ?? order?.price );
               state.lastActionAt = Date.now();
 
               console.log(
@@ -265,18 +267,20 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             const order = await placeOrderAndAwaitFill({
               userId,
               exchangeName: botDoc.exchange ?? "delta",
-              symbol: "BTCUSD",
+              symbol: apiSymbol,
               side: "sell",
               amount: quantity,
               type: "market",
             });
+
+            console.log("order to debug ======>",order);
 
             const filled = Number(order?.filled ?? order?.amount ?? 0);
 
             // --- SELL TRADE LOGGING + REALIZED PNL ---
             try {
               const price = Number(
-                order?.price ?? order?.average ?? closes[closes.length - 1]
+                order?.average
               );
 
               if (filled > 0) {
@@ -286,7 +290,8 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
                   state.entryPrice !== null &&
                   Number.isFinite(state.entryPrice)
                 ) {
-                  pnl = (price - state.entryPrice) * filled;
+                  const contractSize = await computeContractSize(apiSymbol, price);
+                  pnl = (price - state.entryPrice) * filled * contractSize;
                 }
 
                 await TradeLog.create({
@@ -325,7 +330,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
             }
 
             if (filled > 0) {
-              const exitPrice = Number(order?.price ?? order?.average ?? null);
+              const exitPrice = Number(order?.average ?? order?.price ?? null);
 
               state.inPosition = false;
               state.entryPrice = null;

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import TradeLog from "../models/TradeLog.js";
 import { BotModel } from "../models/BotModel.js";
 import { fetchCandlesFromBinance } from "../services/fetchCandles.js";
+import { computeContractSize } from "../services/deltaProductService.js";
 
 /**
  * GET /api/bots/:id/trades
@@ -53,12 +54,18 @@ export const getBotPnl = async (req: Request, res: Response) => {
       const qty = Number(bot.configuration?.quantity ?? bot.quantity ?? 0);
       if (qty > 0) {
         // fetch latest price for symbol
-        const fetchSymbol = (bot.symbol ?? "").replace("/", "").replace(/-PERP$/i, "");
+        const fetchSymbol = (bot.symbol ?? "").replace("/", "");
         const candles = await fetchCandlesFromBinance(fetchSymbol, "1m", 1);
         const latestPrice = Number((candles?.[candles.length - 1]?.close) ?? 0);
+        console.log("debug latestPrice ======>>>>>>>>",latestPrice);
+        const contractSize = await computeContractSize(fetchSymbol, latestPrice);
         if (latestPrice > 0) {
-          unrealized = (latestPrice - Number(bot.runtime.entryPrice)) * qty;
-        }
+          unrealized = (latestPrice - Number(bot.runtime.entryPrice)) * qty *contractSize;
+                  console.log("debug unrealized ================>>>>>>>>",unrealized);
+              console.log("debug qty ===================>>>>>>>>",qty);
+                            console.log("debug bot.runtime.entryPrice ======>>>>>>>>",bot.runtime.entryPrice);
+
+        }     
       }
     }
 
