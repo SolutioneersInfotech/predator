@@ -55,7 +55,8 @@ export const getBotPnl = async (req: Request, res: Response) => {
       if (qty > 0) {
         // fetch latest price for symbol
         const fetchSymbol = (bot.symbol ?? "").replace("/", "");
-        const candles = await fetchCandlesFromBinance(fetchSymbol, "1m", 1);
+        // Binance only supports USDT major pairs in Spot API
+        const candles = await fetchCandlesFromBinance(fetchSymbol.replace(/USD$/, "USDT"), "1m", 1);
         const latestPrice = Number((candles?.[candles.length - 1]?.close) ?? 0);
         console.log("debug latestPrice ======>>>>>>>>",latestPrice);
         const contractSize = await computeContractSize(fetchSymbol, latestPrice);

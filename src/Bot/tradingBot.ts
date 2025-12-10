@@ -147,8 +147,9 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
           // 🔵 STEP 2: Fetch candles
           // -----------------------------------------
           console.log(`[BOT ${botDoc.id}] Fetching candles...`);
+          // Binance only supports USDT major pairs in Spot API
           const candles = await fetchCandlesFromBinance(
-            apiSymbol,
+            apiSymbol.replace(/USD$/, "USDT"),
             timeframe,
             200
           );
@@ -162,6 +163,8 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
           );
 
           const now = Date.now();
+
+          console.log("--------------------9dec------apiSymbol in trading bot loop======>", apiSymbol);
 
           // -----------------------------------------
           // 🔵 STEP 3: BUY SIGNAL
