@@ -4,6 +4,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 
 import fetch from "node-fetch";
+import { getIndicators } from "../controllers/indicatorsController.js";
 
 const commodityRoutes = Router();
 
@@ -62,5 +63,7 @@ commodityRoutes.get("/", async (req: Request, res: Response) => {
         res.status(500).json({ message: "Error fetching cryptos", error });
     }
 });
+
+commodityRoutes.get("/indicators/:symbol",getIndicators);
 
 export default commodityRoutes;

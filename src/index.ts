@@ -46,13 +46,9 @@ const connectDB = async () => {
 };
 
 // Test route
-app.get("/", (_req, res) => res.json({ message: "Strategy API running" }));
+app.get("/", (_req, res) => res.json({ message: "Predator API running" }));
 
 // Routes
-
-// app.use("/api/strategy", strategyRouter);
-// app.use("/api/commodities", commodityRoutes);
-
 app.use("/api/strategy", verifyAuth("Bitbot1"), strategyRouter);
 app.use("/api/commodities", verifyAuth("Bitbot1"), commodityRoutes);
 
