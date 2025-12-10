@@ -12,13 +12,15 @@ export interface IBot extends Document {
   rsiSell?: number;
   brokerId?: string;
   status: "running" | "stopped" | "paused";
-  configuration:any;
+  configuration: any;
   runtime?: {
     inPosition: boolean;
     entryPrice?: number | null;
     lastActionAt?: number;
   };
-
+  botWinningTrades: number;
+  botLosingTrades: number;
+  botWinRate: number;
 }
 
 const BotSchema = new Schema<IBot>(
@@ -33,7 +35,9 @@ const BotSchema = new Schema<IBot>(
     strategy_type: { type: String, enum: ["RSI", "Custom"], required: true },
     rsiBuy: { type: Number },
     rsiSell: { type: Number },
-
+    botWinningTrades: { type: Number, default: 0 },
+    botLosingTrades: { type: Number, default: 0 },
+    botWinRate: { type: Number, default: 0 },
     brokerId: {
       type: String,
       required: true,
@@ -57,7 +61,7 @@ const BotSchema = new Schema<IBot>(
         entryPrice: null,
         lastActionAt: 0,
       },
-    }
+    },
   },
   { timestamps: true }
 );

@@ -19,6 +19,7 @@ import testDeltaRoutes from "./routes/testdelta.routes.js"
 
 import syncdeltaProducts from "./routes/DeltaProductRoute.js";
 import { botManager } from "./Bot/botManager.js";
+import platformMetricsRoutes from "./routes/platformMetricsRoutes.js";
 
 
 
@@ -51,7 +52,7 @@ app.get("/", (_req, res) => res.json({ message: "Predator API running" }));
 // Routes
 app.use("/api/strategy", verifyAuth("Bitbot1"), strategyRouter);
 app.use("/api/commodities", verifyAuth("Bitbot1"), commodityRoutes);
-
+app.use("/api/platform-metrics", platformMetricsRoutes);
 app.use("/api/exchange", exchangeRouter);
 app.use("/api/trade", tradeRouter);
 app.use('/api/bots', botRoutes);

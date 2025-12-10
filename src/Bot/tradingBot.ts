@@ -5,6 +5,12 @@ import { BotModel } from "../models/BotModel.js";
 import TradeLog from "../models/TradeLog.js";
 import { publishTrade, publishRuntime } from "../ws/wsServer.js";
 import { computeContractSize } from "../services/deltaProductService.js";
+import {
+  incrementTradesExecuted,
+  addRealisedPnl,
+  incrementWinningTrade,
+  incrementLosingTrade,
+} from "../services/metricsService.js";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,17 +93,14 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
         // compute unrealized pnl if in position
         let computedPnl = 0;
         if (state.inPosition && state.entryPrice != null) {
-          const qty = Number(
-            config.configuration?.quantity ?? 0
-          );
+          const qty = Number(config.configuration?.quantity ?? 0);
           // fetch latest price quickly (use your price/candle service)
           try {
-            const fetchSymbol = (config.symbol ?? "")
-              .replace("/", "");
-              // .replace(/-PERP$/i, "");
+            const fetchSymbol = (config.symbol ?? "").replace("/", "");
+            // .replace(/-PERP$/i, "");
             const candles = await fetchCandlesFromBinance(fetchSymbol, "1m", 1);
             const latest = Number(candles?.[candles.length - 1]?.close ?? 0);
-            console.log("debug latest =====> ",latest);
+            console.log("debug latest =====> ", latest);
             if (latest > 0 && qty > 0) {
               computedPnl = (latest - Number(state.entryPrice)) * qty;
             }
@@ -164,7 +167,10 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
 
           const now = Date.now();
 
-          console.log("--------------------9dec------apiSymbol in trading bot loop======>", apiSymbol);
+          console.log(
+            "--------------------9dec------apiSymbol in trading bot loop======>",
+            apiSymbol
+          );
 
           // -----------------------------------------
           // 🔵 STEP 3: BUY SIGNAL
@@ -190,9 +196,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
 
             // --- BUY TRADE LOGGING ---
             try {
-              const price = Number(
-                order?.average ?? closes[closes.length - 1]
-              );
+              const price = Number(order?.average ?? closes[closes.length - 1]);
 
               if (filled > 0) {
                 await TradeLog.create({
@@ -215,9 +219,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
               );
             }
 
-            const price = Number(
-              order?.average
-            );
+            const price = Number(order?.average);
 
             console.log("7dec------Price in trading bot loop======>", price);
             console.log(
@@ -245,7 +247,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
 
             if (filled > 0) {
               state.inPosition = true;
-              state.entryPrice = Number(order?.average ?? order?.price );
+              state.entryPrice = Number(order?.average ?? order?.price);
               state.lastActionAt = Date.now();
 
               console.log(
@@ -276,15 +278,13 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
               type: "market",
             });
 
-            console.log("order to debug ======>",order);
+            console.log("order to debug ======>", order);
 
             const filled = Number(order?.filled ?? order?.amount ?? 0);
 
             // --- SELL TRADE LOGGING + REALIZED PNL ---
             try {
-              const price = Number(
-                order?.average
-              );
+              const price = Number(order?.average);
 
               if (filled > 0) {
                 let pnl: number | null = null;
@@ -293,7 +293,10 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
                   state.entryPrice !== null &&
                   Number.isFinite(state.entryPrice)
                 ) {
-                  const contractSize = await computeContractSize(apiSymbol, price);
+                  const contractSize = await computeContractSize(
+                    apiSymbol,
+                    price
+                  );
                   pnl = (price - state.entryPrice) * filled * contractSize;
                 }
 
@@ -311,6 +314,19 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
                   closedAt: new Date(),
                   rawResponse: order,
                 });
+
+                try {
+                  await incrementTradesExecuted(1);
+
+                  if (typeof pnl !== "undefined" && pnl !== null) {
+                    if (pnl > 0) await incrementWinningTrade();
+                    else if (pnl < 0) await incrementLosingTrade();
+
+                    await addRealisedPnl(pnl);
+                  }
+                } catch (err) {
+                  console.error("Metrics update failed:", err);
+                }
 
                 try {
                   publishTrade(botDoc._id?.toString?.() ?? botDoc.id, {

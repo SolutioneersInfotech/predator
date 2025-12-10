@@ -1,7 +1,11 @@
 import express from "express";
 import { BotModel } from "../models/BotModel.js";
 import { botManager } from "../Bot/botManager.js";
-import { getBotPnl, getBotTrades } from "../controllers/botHistoryController.js";
+import {
+  getBotPnl,
+  getBotTrades,
+} from "../controllers/botHistoryController.js";
+import { incrementBotsCreated } from "../services/metricsService.js";
 
 const router = express.Router();
 
@@ -30,6 +34,9 @@ router.post("/", async (req, res) => {
 
     // Start via botManager (NOT startTradingBot)
     await botManager.startBot(botDoc);
+
+    // Update metric
+    await incrementBotsCreated(1);
 
     return res.json({
       message: `Bot ${botDoc.name} created and started`,
