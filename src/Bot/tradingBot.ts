@@ -200,7 +200,7 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
 
               if (filled > 0) {
                 await TradeLog.create({
-                  botId: botDoc._id?.toString?.() ?? botDoc.id,
+                  botId: botDoc.id ?? botDoc._id?.toString?.(),
                   userId: botDoc.userId,
                   exchange: botDoc.exchange,
                   symbol: botDoc.symbol,
@@ -298,6 +298,27 @@ export async function startTradingBot(config: BotConfig, botDoc: any) {
                     price
                   );
                   pnl = (price - state.entryPrice) * filled * contractSize;
+                  if (pnl !== null) {
+                    const bot = await BotModel.findById(botDoc.id);
+
+                    if (bot) {
+                      if (pnl > 0) {
+                        bot.botWinningTrades = (bot.botWinningTrades || 0) + 1;
+                      } else if (pnl < 0) {
+                        bot.botLosingTrades = (bot.botLosingTrades || 0) + 1;
+                      }
+
+                      const wins = bot.botWinningTrades;
+                      const losses = bot.botLosingTrades;
+
+                      bot.botWinRate =
+                        wins + losses > 0
+                          ? Number(((wins / (wins + losses)) * 100).toFixed(2))
+                          : 0;
+
+                      await bot.save();
+                    }
+                  }
                 }
 
                 await TradeLog.create({
