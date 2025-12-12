@@ -5,6 +5,7 @@ import type { Request, Response } from "express";
 
 import fetch from "node-fetch";
 import { getIndicators } from "../controllers/indicatorsController.js";
+import { getIndicatorSeriesHandler } from "../controllers/indicatorsSeriesController.js";
 
 const commodityRoutes = Router();
 
@@ -65,5 +66,8 @@ commodityRoutes.get("/", async (req: Request, res: Response) => {
 });
 
 commodityRoutes.get("/indicators/:symbol",getIndicators);
+
+commodityRoutes.get("/indicators/:symbol/series", getIndicatorSeriesHandler);
+
 
 export default commodityRoutes;

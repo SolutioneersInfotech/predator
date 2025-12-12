@@ -2,12 +2,70 @@ import axios from "axios";
 import { splitCryptoPair } from "../utils/marketType.js";
 import dayjs from "dayjs";
 import { computeRSI, fetchRSI, fetchRSI1W, fetchRSI4H } from "../utils/rsiHelper.js";
+import { fetchCandlesFromBinance, type Candle } from "./fetchCandles.js";
+import { computeSMASeries, computeEMASeries, computeBollingerBands, computeMACDSeries, computeRSISeries } from "../utils/indicatorTechnicalCalculation.js";
 
+// ---------- (SMA computation snippet already there) ----------
 function computeSMA(values: number[], period = 50) {
   if (values.length < period) return null;
   const slice = values.slice(-period);
   return slice.reduce((a, b) => a + b, 0) / period;
 }
+
+type Params = {
+  limit?: number;
+  smaPeriod?: number;
+  emaPeriod?: number;
+  bbPeriod?: number;
+  bbStd?: number;
+  rsiPeriod?: number;
+};
+
+export async function getIndicatorSeries(
+  symbol: string,
+  interval = "1d",
+  requestedSeries: string[] = [],
+  params: Params = {}
+) {
+  // apply defaults
+  const {
+    limit = 500,
+    smaPeriod = 50,
+    emaPeriod = 20,
+    bbPeriod = 20,
+    bbStd = 2,
+    rsiPeriod = 14,
+  } = params;
+
+  // fetch candles using the requested limit
+  const candles: Candle[] = await fetchCandlesFromBinance(symbol, interval, limit);
+
+  const timestamps = candles.map((c) => c.time);
+  const closes = candles.map((c) => c.close);
+
+  const out: any = { timestamps, candles };
+
+  // compute only requested series (allow both "sma" and "sma50" etc)
+  if (requestedSeries.includes("sma") || requestedSeries.includes("sma50")) {
+    out.sma = computeSMASeries(closes, smaPeriod);
+  }
+  if (requestedSeries.includes("ema") || requestedSeries.includes("ema20")) {
+    out.ema = computeEMASeries(closes, emaPeriod);
+    console.log("Out.ema ==============================================>>>>>>>>>>>",out.ema);
+  }
+  if (requestedSeries.includes("bbands")) {
+    out.bb = computeBollingerBands(closes, bbPeriod, bbStd);
+  }
+  if (requestedSeries.includes("macd")) {
+    out.macd = computeMACDSeries(closes);
+  }
+  if (requestedSeries.includes("rsi")) {
+    out.rsi = computeRSISeries(closes, rsiPeriod);
+  }
+
+  return out;
+}
+
 
 function computeMACD(closes: number[]) {
   if (closes.length < 50) return null;
