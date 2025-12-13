@@ -3,7 +3,7 @@ import { splitCryptoPair } from "../utils/marketType.js";
 import dayjs from "dayjs";
 import { computeRSI, fetchRSI, fetchRSI1W, fetchRSI4H } from "../utils/rsiHelper.js";
 import { fetchCandlesFromBinance, type Candle } from "./fetchCandles.js";
-import { computeSMASeries, computeEMASeries, computeBollingerBands, computeMACDSeries, computeRSISeries } from "../utils/indicatorTechnicalCalculation.js";
+import { computeSMASeries, computeEMASeries, computeBollingerBands, computeMACDSeries, computeRSISeries, computeADXSeries, computeATRSeries } from "../utils/indicatorTechnicalCalculation.js";
 
 // ---------- (SMA computation snippet already there) ----------
 function computeSMA(values: number[], period = 50) {
@@ -12,13 +12,28 @@ function computeSMA(values: number[], period = 50) {
   return slice.reduce((a, b) => a + b, 0) / period;
 }
 
-type Params = {
+export type Params = {
+  // General
   limit?: number;
+
+  // SMA / EMA
   smaPeriod?: number;
-  emaPeriod?: number;
+  emaFast?: number;
+  emaSlow?: number;
+
+  // Bollinger Bands
   bbPeriod?: number;
   bbStd?: number;
+
+  // Momentum / Trend
   rsiPeriod?: number;
+  adxPeriod?: number;
+  atrPeriod?: number;
+
+  // MACD
+  macdFast?: number;
+  macdSlow?: number;
+  macdSignal?: number;
 };
 
 export async function getIndicatorSeries(
@@ -27,44 +42,96 @@ export async function getIndicatorSeries(
   requestedSeries: string[] = [],
   params: Params = {}
 ) {
-  // apply defaults
   const {
     limit = 500,
+
+    // SMA / EMA
     smaPeriod = 50,
-    emaPeriod = 20,
+    emaFast = 20,
+    emaSlow = 50,
+
+    // Bollinger Bands
     bbPeriod = 20,
     bbStd = 2,
+
+    // RSI / ADX / ATR
     rsiPeriod = 14,
+    adxPeriod = 14,
+    atrPeriod = 14,
+
+    // MACD
+    macdFast = 12,
+    macdSlow = 26,
+    macdSignal = 9,
   } = params;
 
-  // fetch candles using the requested limit
-  const candles: Candle[] = await fetchCandlesFromBinance(symbol, interval, limit);
+  // ---------------------------------------
+  // Fetch candles
+  // ---------------------------------------
+  const candles: Candle[] = await fetchCandlesFromBinance(
+    symbol,
+    interval,
+    limit
+  );
 
   const timestamps = candles.map((c) => c.time);
   const closes = candles.map((c) => c.close);
+  const highs = candles.map((c) => c.high);
+  const lows = candles.map((c) => c.low);
 
   const out: any = { timestamps, candles };
 
-  // compute only requested series (allow both "sma" and "sma50" etc)
-  if (requestedSeries.includes("sma") || requestedSeries.includes("sma50")) {
+  // ---------------------------------------
+  // Compute requested series ONLY
+  // ---------------------------------------
+
+  if (requestedSeries.includes("sma")) {
     out.sma = computeSMASeries(closes, smaPeriod);
   }
-  if (requestedSeries.includes("ema") || requestedSeries.includes("ema20")) {
-    out.ema = computeEMASeries(closes, emaPeriod);
-    console.log("Out.ema ==============================================>>>>>>>>>>>",out.ema);
+
+  if (requestedSeries.includes("ema")) {
+    out.emaFast = computeEMASeries(closes, emaFast);
+    out.emaSlow = computeEMASeries(closes, emaSlow);
   }
+
   if (requestedSeries.includes("bbands")) {
     out.bb = computeBollingerBands(closes, bbPeriod, bbStd);
   }
-  if (requestedSeries.includes("macd")) {
-    out.macd = computeMACDSeries(closes);
-  }
+
   if (requestedSeries.includes("rsi")) {
     out.rsi = computeRSISeries(closes, rsiPeriod);
   }
 
+  if (requestedSeries.includes("macd")) {
+    out.macd = computeMACDSeries(
+      closes,
+      macdFast,
+      macdSlow,
+      macdSignal
+    );
+  }
+
+  if (requestedSeries.includes("adx")) {
+    out.adx = computeADXSeries(
+      highs,
+      lows,
+      closes,
+      adxPeriod
+    );
+  }
+
+  if (requestedSeries.includes("atr")) {
+    out.atr = computeATRSeries(
+      highs,
+      lows,
+      closes,
+      atrPeriod
+    );
+  }
+
   return out;
 }
+
 
 
 function computeMACD(closes: number[]) {
