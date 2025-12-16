@@ -34,9 +34,11 @@ async function fetchLastPrice(symbol: string): Promise<number> {
     return 0;
 }
 
-router.post("/execute", verifyAuth(PROJECT_ID), async (req: Request & { user?: { userId?: string } }, res) => {
+router.post("/execute", verifyAuth(PROJECT_ID), async (req: Request & { user?: { authId?: string } }, res) => {
+
     try {
-        const userId = req.user?.userId;
+        const userId = req.user?.authId;
+
         if (!userId) {
             return res.status(401).json({ message: "User not found in token" });
         }
@@ -88,7 +90,8 @@ router.post("/execute", verifyAuth(PROJECT_ID), async (req: Request & { user?: {
         }
 
         const orderRequest = {
-            userId: String(userId),
+            authId: String(userId),
+
             exchange,
             symbol: formattedSymbol,
             side: side.toUpperCase(),
@@ -111,4 +114,5 @@ router.post("/execute", verifyAuth(PROJECT_ID), async (req: Request & { user?: {
 });
 
 export default router;
+
 

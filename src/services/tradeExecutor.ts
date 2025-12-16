@@ -7,7 +7,8 @@ import * as bybit from "../exchanges/bybit.js";
 
 export async function executeOrderForUser(order) {
     const cred = await ExchangeCredential.findOne({
-        userId: order.userId,
+        // userId: order.userId,
+        authId: order.authId,
         exchange: order.exchange,
     }).exec();
 
@@ -18,16 +19,27 @@ export async function executeOrderForUser(order) {
     const passphrase = cred.passphrase_enc ? decryptText(cred.passphrase_enc) : undefined;
 
     // STEP 1: 🔥 BEFORE placing order — create trade log (PENDING)
+    // const tradeLog = await TradeLog.create({
+    //     userId: order.userId,
+    //     exchange: order.exchange,
+    //     symbol: order.symbol,
+    //     side: order.side,
+    //     size: order.quantity,       // 🔥 IMPORTANT: quantity = size
+    //     price: order.price,
+    //     type: order.type || "MARKET",
+    //     status: "PENDING",
+    // });
     const tradeLog = await TradeLog.create({
-        userId: order.userId,
+        botId: null,                              // manual trade
+        userId: order.authId,                    // 🔥 authId yahan
         exchange: order.exchange,
         symbol: order.symbol,
-        side: order.side,
-        size: order.quantity,       // 🔥 IMPORTANT: quantity = size
-        price: order.price,
-        type: order.type || "MARKET",
-        status: "PENDING",
+        side: order.side.toLowerCase(),           // 🔥 BUY → buy
+        type: order.type.toLowerCase(),           // 🔥 LIMIT → limit
+        amount: Number(order.quantity),            // 🔥 REQUIRED FIELD
+        price: Number(order.price),                // 🔥 REQUIRED FIELD
     });
+
 
     let result;
 

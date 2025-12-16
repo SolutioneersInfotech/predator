@@ -1,23 +1,123 @@
-import type { Request, Response } from "express";
-import mongoose from "mongoose";
+// import type { Request, Response } from "express";
+// import mongoose from "mongoose";
+// import ExchangeCredential from "../models/ExchangeCredential.js";
+// import { decryptText } from "../utils/crypto.js";
+// import {
+//     fetchDeltaOrderHistory,
+//     fetchDeltaFillsHistory,
+// } from "../exchanges/delta.js";
+
+// /**
+//  * 🔐 Helper: Fetch & Decrypt Delta API Keys
+//  */
+// const getDeltaCreds = async (userId: string) => {
+//     const creds = await ExchangeCredential.findOne({
+//         userId: new mongoose.Types.ObjectId(userId),
+//         exchange: "delta",
+//     });
+
+//     if (!creds) {
+//         throw new Error("No Delta API credentials found");
+//     }
+
+//     return {
+//         apiKey: decryptText(creds.apiKey_enc),
+//         apiSecret: decryptText(creds.apiSecret_enc),
+//     };
+// };
+
+
+// /**
+//  * 📌 Fetch Delta Order History
+//  */
+// export const getDeltaOrders = async (req: Request, res: Response) => {
+//     try {
+//         const userId = (req as any).user?.userId;   // ✅ FIXED
+//         console.log("userId", userId);
+
+
+//         if (!userId) {
+//             return res.status(400).json({ message: "Missing userId" });
+//         }
+
+//         console.log("📝 Fetching Delta Order History for user:", userId);
+
+//         const { apiKey, apiSecret } = await getDeltaCreds(userId);
+
+//         const result = await fetchDeltaOrderHistory(apiKey, apiSecret);
+
+//         console.log("📌 Delta Orders Response:", result);
+
+//         return res.status(200).json({
+//             success: true,
+//             orders: result.result || [],
+//         });
+
+//     } catch (error: any) {
+//         console.error("❌ Order History Error:", error.message);
+//         return res.status(500).json({
+//             success: false,
+//             error: error.message,
+//         });
+//     }
+// };
+
+
+// /**
+//  * 📌 Fetch Delta Fills (Trade History)
+//  */
+// export const getDeltaFills = async (req: Request, res: Response) => {
+//     try {
+//         const userId = (req as any).user?.userId;   // ✅ FIXED
+//         console.log("userId", userId);
+
+//         if (!userId) {
+//             return res.status(400).json({ message: "Missing userId" });
+//         }
+
+//         console.log("📝 Fetching Delta Fills History for user:", userId);
+
+//         const { apiKey, apiSecret } = await getDeltaCreds(userId);
+
+//         const result = await fetchDeltaFillsHistory(apiKey, apiSecret);
+
+//         console.log("📌 Delta Fills Response:", result);
+
+//         return res.status(200).json({
+//             success: true,
+//             fills: result.result || [],
+//         });
+
+//     } catch (error: any) {
+//         console.error("❌ Fills History Error:", error.message);
+//         return res.status(500).json({
+//             success: false,
+//             error: error.message,
+//         });
+//     }
+// };
+
+
+import type { Response } from "express";
 import ExchangeCredential from "../models/ExchangeCredential.js";
 import { decryptText } from "../utils/crypto.js";
 import {
     fetchDeltaOrderHistory,
     fetchDeltaFillsHistory,
 } from "../exchanges/delta.js";
+import type { AuthRequest } from "../middlewares/authMiddleware.js";
 
 /**
- * 🔐 Helper: Fetch & Decrypt Delta API Keys
+ * 🔐 Helper: Fetch & Decrypt Delta API Keys (JWT based)
  */
-const getDeltaCreds = async (userId: string) => {
+const getDeltaCreds = async (authId: string) => {
     const creds = await ExchangeCredential.findOne({
-        userId: new mongoose.Types.ObjectId(userId),
+        authId,
         exchange: "delta",
     });
 
     if (!creds) {
-        throw new Error("No Delta API credentials found");
+        throw new Error("Delta exchange not connected for user");
     }
 
     return {
@@ -26,33 +126,28 @@ const getDeltaCreds = async (userId: string) => {
     };
 };
 
-
 /**
  * 📌 Fetch Delta Order History
+ * GET /api/delta/orders
  */
-export const getDeltaOrders = async (req: Request, res: Response) => {
+export const getDeltaOrders = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user?.userId;   // ✅ FIXED
-        console.log("userId", userId);
+        const authId = req.user?.authId;
 
-
-        if (!userId) {
-            return res.status(400).json({ message: "Missing userId" });
+        if (!authId) {
+            return res.status(401).json({ message: "Unauthorized" });
         }
 
-        console.log("📝 Fetching Delta Order History for user:", userId);
+        console.log("📝 Fetching Delta Order History for authId:", authId);
 
-        const { apiKey, apiSecret } = await getDeltaCreds(userId);
+        const { apiKey, apiSecret } = await getDeltaCreds(authId);
 
         const result = await fetchDeltaOrderHistory(apiKey, apiSecret);
 
-        console.log("📌 Delta Orders Response:", result);
-
         return res.status(200).json({
             success: true,
-            orders: result.result || [],
+            orders: result?.result || [],
         });
-
     } catch (error: any) {
         console.error("❌ Order History Error:", error.message);
         return res.status(500).json({
@@ -62,32 +157,28 @@ export const getDeltaOrders = async (req: Request, res: Response) => {
     }
 };
 
-
 /**
  * 📌 Fetch Delta Fills (Trade History)
+ * GET /api/delta/fills
  */
-export const getDeltaFills = async (req: Request, res: Response) => {
+export const getDeltaFills = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user?.userId;   // ✅ FIXED
-        console.log("userId", userId);
+        const authId = req.user?.authId;
 
-        if (!userId) {
-            return res.status(400).json({ message: "Missing userId" });
+        if (!authId) {
+            return res.status(401).json({ message: "Unauthorized" });
         }
 
-        console.log("📝 Fetching Delta Fills History for user:", userId);
+        console.log("📝 Fetching Delta Fills History for authId:", authId);
 
-        const { apiKey, apiSecret } = await getDeltaCreds(userId);
+        const { apiKey, apiSecret } = await getDeltaCreds(authId);
 
         const result = await fetchDeltaFillsHistory(apiKey, apiSecret);
 
-        console.log("📌 Delta Fills Response:", result);
-
         return res.status(200).json({
             success: true,
-            fills: result.result || [],
+            fills: result?.result || [],
         });
-
     } catch (error: any) {
         console.error("❌ Fills History Error:", error.message);
         return res.status(500).json({

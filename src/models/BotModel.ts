@@ -2,7 +2,8 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export interface IBot extends Document {
   name: string;
-  userId?: string;
+  // userId?: string;
+  authId: string; // 🔥 JWT based user id
   exchange: string;
   symbol?: string;
   quantity?: number;
@@ -26,7 +27,12 @@ export interface IBot extends Document {
 const BotSchema = new Schema<IBot>(
   {
     name: { type: String, required: true },
-    userId: { type: String },
+    // userId: { type: String },
+    authId: {
+      type: String,
+      required: true,
+      index: true,
+    },
 
     exchange: { type: String, required: true },
     symbol: { type: String },

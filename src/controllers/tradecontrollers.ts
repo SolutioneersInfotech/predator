@@ -1,11 +1,14 @@
+
+
 // import type { Request, Response } from "express";
 // import ccxt from "ccxt";
+// import mongoose from "mongoose";
 // import ExchangeCredential from "../models/ExchangeCredential.js";
 // import { decryptText } from "../utils/crypto.js";
 
 // /**
-//  * ✅ GET /api/trades
-//  * Fetch active trades (open positions) from Delta Exchange for the logged-in user
+//  * ✅ GET /api/Activetrades?userId=<id>
+//  * Fetch active/open positions from Delta Exchange for a given user.
 //  */
 // export const getActiveTrades = async (req: Request, res: Response) => {
 //     try {
@@ -14,127 +17,146 @@
 //             return res.status(400).json({ message: "Missing userId" });
 //         }
 
-//         // ✅ 1. Fetch encrypted credentials from DB
-//         const creds = await ExchangeCredential.findOne({ userId, exchange: "delta" });
+//         console.log("🔍 Fetching Delta credentials for:", userId);
+
+//         // ✅ Convert userId properly
+//         const creds = await ExchangeCredential.findOne({
+//             userId: new mongoose.Types.ObjectId(userId),
+//             exchange: "delta",
+//         });
+
 //         if (!creds) {
+//             console.log("❌ No credentials found for user:", userId);
 //             return res.status(404).json({ message: "No Delta API credentials found" });
 //         }
 
-
-//         // ✅ 2. Decrypt the stored keys
+//         console.log("✅ Credentials found. Decrypting...");
 //         const apiKey = decryptText(creds.apiKey_enc);
 //         const apiSecret = decryptText(creds.apiSecret_enc);
 
-//         // ✅ 3. Initialize Delta exchange client
+//         console.log("🧩 Decrypted API Key:", apiKey);
+//         console.log("🧩 Decrypted API Secret:", apiSecret);
+
+//         // ✅ Initialize Delta Exchange client
 //         const exchange = new ccxt.delta({
 //             apiKey,
 //             secret: apiSecret,
 //             enableRateLimit: true,
+//             urls: {
+//                 api: {
+//                     public: 'https://cdn-ind.testnet.deltaex.org',
+//                     private: 'https://cdn-ind.testnet.deltaex.org',
+//                 },
+//             },
 //         });
-//         console.log("Initialized Delta exchange client for user:", userId);
 
-//         // ✅ 4. Fetch active positions
+//         console.log("🌐 Using API endpoint:", exchange.urls.api);
+
+//         console.log("🔁 Fetching open positions...");
 //         const positions = await exchange.fetchPositions();
 
-//         // ✅ 5. Filter only active/open positions
-//         const activePositions = positions.filter((pos: any) => pos.contractSize && pos.contractSize > 0);
+//         console.log("📥 RAW DELTA RESPONSE:", positions);
 
-//         // ✅ 6. Transform for frontend compatibility
+//         // ✅ Filter active/open positions
+//         const activePositions = positions.filter(
+//             (pos: any) => pos.contractSize && pos.contractSize > 0
+//         );
+
+//         console.log(`✅ Found ${activePositions.length} active positions`);
+
+//         // ✅ Format data for frontend
 //         const formatted = activePositions.map((pos: any) => ({
 //             id: pos.id || pos.symbol,
 //             symbol: pos.symbol,
-//             type: pos.side?.toUpperCase(),
-//             entryPrice: pos.entryPrice,
-//             currentPrice: pos.markPrice,
-//             pnl: pos.unrealizedPnl || 0,
+//             type: pos.side?.toUpperCase() || "N/A",
+//             entryPrice: pos.entryPrice || 0,
+//             // currentPrice: pos.markPrice || 0,
+//             currentPrice: Number(pos.markPrice || pos.info?.mark_price || 0),
+
+//             pnl: pos.info.unrealized_pnl || 0,
 //             status: "active",
 //         }));
-//         console.log(`Fetched ${formatted.length} active trades for user:`, userId);
 
 //         return res.status(200).json(formatted);
 //     } catch (error: any) {
-//         console.error("Error fetching active trades:", error.message || error);
+//         console.error("🔥 Error fetching active trades:", error);
 //         return res.status(500).json({
 //             message: "Failed to fetch active trades",
 //             error: error.message,
 //         });
 //     }
 // };
-
-import type { Request, Response } from "express";
+import type { Response } from "express";
 import ccxt from "ccxt";
-import mongoose from "mongoose";
 import ExchangeCredential from "../models/ExchangeCredential.js";
 import { decryptText } from "../utils/crypto.js";
+import type { AuthRequest } from "../middlewares/authMiddleware.js";
 
 /**
- * ✅ GET /api/Activetrades?userId=<id>
- * Fetch active/open positions from Delta Exchange for a given user.
+ * ✅ GET /api/active-trades
+ * Fetch active/open positions for LOGGED-IN USER (JWT based)
  */
-export const getActiveTrades = async (req: Request, res: Response) => {
+export const getActiveTrades = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.query.userId as string;
-        if (!userId) {
-            return res.status(400).json({ message: "Missing userId" });
+        // 🔥 USER FROM JWT
+        const authId = req.user?.authId;
+
+        if (!authId) {
+            return res.status(401).json({ message: "Unauthorized user" });
         }
 
-        console.log("🔍 Fetching Delta credentials for:", userId);
+        console.log("🔍 Fetching Delta credentials for authId:", authId);
 
-        // ✅ Convert userId properly
+        // 🔥 FIND CREDENTIALS USING authId (NOT ObjectId)
         const creds = await ExchangeCredential.findOne({
-            userId: new mongoose.Types.ObjectId(userId),
+            authId: authId,
             exchange: "delta",
         });
 
         if (!creds) {
-            console.log("❌ No credentials found for user:", userId);
-            return res.status(404).json({ message: "No Delta API credentials found" });
+            console.log("❌ No credentials found for authId:", authId);
+            return res
+                .status(404)
+                .json({ message: "No Delta API credentials found" });
         }
 
-        console.log("✅ Credentials found. Decrypting...");
+        // 🔐 Decrypt keys
         const apiKey = decryptText(creds.apiKey_enc);
         const apiSecret = decryptText(creds.apiSecret_enc);
 
-        console.log("🧩 Decrypted API Key:", apiKey);
-        console.log("🧩 Decrypted API Secret:", apiSecret);
-
-        // ✅ Initialize Delta Exchange client
+        // 🔗 Initialize Delta Exchange
         const exchange = new ccxt.delta({
             apiKey,
             secret: apiSecret,
             enableRateLimit: true,
             urls: {
                 api: {
-                    public: 'https://cdn-ind.testnet.deltaex.org',
-                    private: 'https://cdn-ind.testnet.deltaex.org',
+                    public: "https://cdn-ind.testnet.deltaex.org",
+                    private: "https://cdn-ind.testnet.deltaex.org",
                 },
             },
         });
 
-        console.log("🌐 Using API endpoint:", exchange.urls.api);
-
         console.log("🔁 Fetching open positions...");
         const positions = await exchange.fetchPositions();
 
-        console.log("📥 RAW DELTA RESPONSE:", positions);
-
-        // ✅ Filter active/open positions
+        // ✅ Filter active positions
         const activePositions = positions.filter(
             (pos: any) => pos.contractSize && pos.contractSize > 0
         );
 
         console.log(`✅ Found ${activePositions.length} active positions`);
 
-        // ✅ Format data for frontend
+        // ✅ Format response
         const formatted = activePositions.map((pos: any) => ({
             id: pos.id || pos.symbol,
             symbol: pos.symbol,
             type: pos.side?.toUpperCase() || "N/A",
             entryPrice: pos.entryPrice || 0,
-            // currentPrice: pos.markPrice || 0,
-            currentPrice: Number(pos.markPrice || pos.info?.mark_price || 0),
-
-            pnl: pos.info.unrealized_pnl || 0,
+            currentPrice: Number(
+                pos.markPrice || pos.info?.mark_price || 0
+            ),
+            pnl: pos.info?.unrealized_pnl || 0,
             status: "active",
         }));
 

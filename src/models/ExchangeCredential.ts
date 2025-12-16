@@ -23,30 +23,88 @@
 //     mongoose.model<IExchangeCredential>("ExchangeCredential", ExchangeCredentialSchema);
 
 
+// import mongoose, { Schema, Document, Model } from "mongoose";
+
+// export interface IExchangeCredential extends Document {
+//     userId: mongoose.Types.ObjectId;
+//     exchange: string;
+//     apiKey_enc: string;
+//     apiSecret_enc: string;
+//     passphrase_enc?: string;
+//     createdAt: Date;
+// }
+
+// // ✅ Schema definition
+// const ExchangeCredentialSchema = new Schema<IExchangeCredential>({
+//     userId: { type: Schema.Types.ObjectId, required: true, index: true },
+//     exchange: { type: String, required: true },
+//     apiKey_enc: { type: String, required: true },
+//     apiSecret_enc: { type: String, required: true },
+//     passphrase_enc: { type: String },
+//     createdAt: { type: Date, default: Date.now },
+// });
+
+// // ✅ Proper TypeScript-safe Model creation
+// const ExchangeCredential: Model<IExchangeCredential> =
+//     mongoose.models.ExchangeCredential ||
+//     mongoose.model<IExchangeCredential>("ExchangeCredential", ExchangeCredentialSchema);
+
+// export default ExchangeCredential;
+
 import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IExchangeCredential extends Document {
-    userId: mongoose.Types.ObjectId;
+    authId: string;                 // 🔥 MAIN USER IDENTIFIER
     exchange: string;
     apiKey_enc: string;
     apiSecret_enc: string;
     passphrase_enc?: string;
     createdAt: Date;
+    updatedAt: Date;
 }
 
 // ✅ Schema definition
-const ExchangeCredentialSchema = new Schema<IExchangeCredential>({
-    userId: { type: Schema.Types.ObjectId, required: true, index: true },
-    exchange: { type: String, required: true },
-    apiKey_enc: { type: String, required: true },
-    apiSecret_enc: { type: String, required: true },
-    passphrase_enc: { type: String },
-    createdAt: { type: Date, default: Date.now },
-});
+const ExchangeCredentialSchema = new Schema<IExchangeCredential>(
+    {
+        authId: {
+            type: String,
+            required: true,
+            index: true,
+        },
+
+        exchange: {
+            type: String,
+            required: true,
+        },
+
+        apiKey_enc: {
+            type: String,
+            required: true,
+        },
+
+        apiSecret_enc: {
+            type: String,
+            required: true,
+        },
+
+        passphrase_enc: {
+            type: String,
+        },
+    },
+    {
+        timestamps: true, // 🔥 auto createdAt & updatedAt
+    }
+);
+
+// ✅ Prevent duplicate exchange per user
+ExchangeCredentialSchema.index({ authId: 1, exchange: 1 }, { unique: true });
 
 // ✅ Proper TypeScript-safe Model creation
 const ExchangeCredential: Model<IExchangeCredential> =
     mongoose.models.ExchangeCredential ||
-    mongoose.model<IExchangeCredential>("ExchangeCredential", ExchangeCredentialSchema);
+    mongoose.model<IExchangeCredential>(
+        "ExchangeCredential",
+        ExchangeCredentialSchema
+    );
 
 export default ExchangeCredential;

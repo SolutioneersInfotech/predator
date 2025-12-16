@@ -8,11 +8,27 @@ const router = express.Router();
 const PROJECT_ID = "Bitbot1";
 
 // ✅ Route: Fetch active trades from Delta
-router.get("/Activetrades", getActiveTrades);
-router.get("/delta/balance", getDeltaBalance);
+router.get(
+    "/active-trades",
+    verifyAuth("Bitbot1"), // 🔐 project check
+    getActiveTrades
+);
+
+router.get(
+    "/delta/balance",
+    verifyAuth("Bitbot1"),
+    getDeltaBalance
+);
+
+router.get(
+    "/delta/equity_change",
+    verifyAuth("Bitbot1"),
+    getEquityChange
+);
+
 router.get("/history/orders", verifyAuth(PROJECT_ID), getDeltaOrders);
 router.get("/history/fills", verifyAuth(PROJECT_ID), getDeltaFills);
-router.get("/delta/equity_change", getEquityChange);
+// router.get("/delta/equity_change", getEquityChange);
 
 
 export default router;
