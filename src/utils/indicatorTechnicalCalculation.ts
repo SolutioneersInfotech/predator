@@ -151,3 +151,144 @@ export function computeRSISeries(closes: number[], period = 14) {
 
   return out;
 }
+
+export function computeATRSeries(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+) {
+  const out: (number | null)[] = [];
+  const tr: number[] = [];
+
+  for (let i = 0; i < highs.length; i++) {
+    if (i === 0) {
+      tr.push(highs[i] - lows[i]);
+    } else {
+      const highLow = highs[i] - lows[i];
+      const highClose = Math.abs(highs[i] - closes[i - 1]);
+      const lowClose = Math.abs(lows[i] - closes[i - 1]);
+      tr.push(Math.max(highLow, highClose, lowClose));
+    }
+  }
+
+  // Smooth TR using EMA-style smoothing (same philosophy as computeEMASeries)
+  const k = 2 / (period + 1);
+  let prevATR: number | null = null;
+
+  for (let i = 0; i < tr.length; i++) {
+    if (i + 1 < period) {
+      out.push(null);
+      if (i + 1 === period - 1) {
+        const seed =
+          tr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+        prevATR = seed;
+      }
+      continue;
+    }
+
+    if (prevATR === null) {
+      prevATR =
+        tr.slice(i + 1 - period, i + 1).reduce((a, b) => a + b, 0) / period;
+      out[out.length - 1] = prevATR;
+      continue;
+    }
+
+    const atr = tr[i] * k + prevATR * (1 - k);
+    out.push(atr);
+    prevATR = atr;
+  }
+
+  return out;
+}
+
+export function computeADXSeries(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+) {
+  const out: (number | null)[] = [];
+
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const tr: number[] = [];
+
+  for (let i = 0; i < highs.length; i++) {
+    if (i === 0) {
+      plusDM.push(0);
+      minusDM.push(0);
+      tr.push(highs[i] - lows[i]);
+      continue;
+    }
+
+    const upMove = highs[i] - highs[i - 1];
+    const downMove = lows[i - 1] - lows[i];
+
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+
+    const highLow = highs[i] - lows[i];
+    const highClose = Math.abs(highs[i] - closes[i - 1]);
+    const lowClose = Math.abs(lows[i] - closes[i - 1]);
+    tr.push(Math.max(highLow, highClose, lowClose));
+  }
+
+  // EMA smoothing constants
+  const k = 2 / (period + 1);
+
+  let prevTR: number | null = null;
+  let prevPlusDM: number | null = null;
+  let prevMinusDM: number | null = null;
+  let prevADX: number | null = null;
+
+  for (let i = 0; i < tr.length; i++) {
+    if (i + 1 < period) {
+      out.push(null);
+      if (i + 1 === period - 1) {
+        prevTR = tr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+        prevPlusDM = plusDM.slice(0, period).reduce((a, b) => a + b, 0) / period;
+        prevMinusDM = minusDM.slice(0, period).reduce((a, b) => a + b, 0) / period;
+      }
+      continue;
+    }
+
+    if (
+      prevTR === null ||
+      prevPlusDM === null ||
+      prevMinusDM === null
+    ) {
+      prevTR =
+        tr.slice(i + 1 - period, i + 1).reduce((a, b) => a + b, 0) / period;
+      prevPlusDM =
+        plusDM.slice(i + 1 - period, i + 1).reduce((a, b) => a + b, 0) / period;
+      prevMinusDM =
+        minusDM.slice(i + 1 - period, i + 1).reduce((a, b) => a + b, 0) / period;
+
+      out[out.length - 1] = null;
+      continue;
+    }
+
+    prevTR = tr[i] * k + prevTR * (1 - k);
+    prevPlusDM = plusDM[i] * k + prevPlusDM * (1 - k);
+    prevMinusDM = minusDM[i] * k + prevMinusDM * (1 - k);
+
+    const plusDI = (100 * prevPlusDM) / prevTR;
+    const minusDI = (100 * prevMinusDM) / prevTR;
+
+    const dx =
+      (100 * Math.abs(plusDI - minusDI)) / (plusDI + minusDI || 1);
+
+    if (prevADX === null) {
+      prevADX = dx;
+      out.push(null);
+    } else {
+      const adx = dx * k + prevADX * (1 - k);
+      out.push(adx);
+      prevADX = adx;
+    }
+  }
+
+  return out;
+}
+
