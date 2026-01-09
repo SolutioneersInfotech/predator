@@ -8,7 +8,7 @@ import {
   computeRSISeries,
 } from "../utils/indicatorTechnicalCalculation.js";
 import { detectMarketType } from "../utils/marketType.js";
-import { getCacheValue, setCacheValue } from "../utils/ttlCache.js";
+import { getCacheValue, setCacheValue } from "../utils/cache.js";
 
 type SignalSnapshot = {
   rsi: number | null;
@@ -78,31 +78,11 @@ function getLastValue(series: (number | null)[]): number | null {
   return null;
 }
 
-function aggregateCandles(source: Candle[], chunkSize: number): Candle[] {
-  const aggregated: Candle[] = [];
-  for (let i = 0; i < source.length; i += chunkSize) {
-    const chunk = source.slice(i, i + chunkSize);
-    if (chunk.length < chunkSize) {
-      break;
-    }
-    aggregated.push({
-      time: chunk[0].time,
-      open: chunk[0].open,
-      high: Math.max(...chunk.map((c) => c.high)),
-      low: Math.min(...chunk.map((c) => c.low)),
-      close: chunk[chunk.length - 1].close,
-      volume: chunk.reduce((sum, c) => sum + (c.volume ?? 0), 0),
-    });
-  }
-  return aggregated;
-}
-
 async function fetchYahooCandles(symbol: string, tf: string, limit: number): Promise<Candle[]> {
   const interval = yahooIntervalMap[tf] ?? "1d";
-  const normalizedLimit = tf === "4h" ? limit * 4 : limit;
-  const windowMs = tf === "4h" ? timeframeMsMap["1h"] : (timeframeMsMap[tf] ?? timeframeMsMap["1d"]);
+  const windowMs = timeframeMsMap[tf] ?? timeframeMsMap["1d"];
   const period2 = new Date();
-  const period1 = new Date(period2.getTime() - windowMs * normalizedLimit);
+  const period1 = new Date(period2.getTime() - windowMs * limit);
 
   const result = await yahooFinance.chart(symbol, {
     interval,
@@ -117,7 +97,7 @@ async function fetchYahooCandles(symbol: string, tf: string, limit: number): Pro
     return [];
   }
 
-  const baseCandles = timestamps.map((timestamp, idx) => ({
+  return timestamps.map((timestamp, idx) => ({
     time: timestamp * 1000,
     open: quotes.open?.[idx] ?? 0,
     high: quotes.high?.[idx] ?? 0,
@@ -125,12 +105,6 @@ async function fetchYahooCandles(symbol: string, tf: string, limit: number): Pro
     close: quotes.close?.[idx] ?? 0,
     volume: quotes.volume?.[idx] ?? undefined,
   })).filter((c) => Number.isFinite(c.close));
-
-  if (tf === "4h") {
-    return aggregateCandles(baseCandles.slice(-normalizedLimit), 4).slice(-limit);
-  }
-
-  return baseCandles;
 }
 
 function buildEmptySignal(tf: string): TimeframeSignal {
@@ -145,18 +119,19 @@ function buildEmptySignal(tf: string): TimeframeSignal {
   };
 }
 
-async function computeSignal(
+export async function computeSignal(
   symbol: string,
   tf: string,
-  limit = 500
+  limit = 500,
+  market?: string
 ): Promise<TimeframeSignal> {
-  const cacheKey = `${symbol}:${tf}:${limit}`;
+  const cacheKey = `signal:${symbol}:${tf}:${limit}:${market ?? "auto"}`;
   const cached = getCacheValue<TimeframeSignal>(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const type = detectMarketType(symbol);
+  const type = market ?? detectMarketType(symbol);
   let candles: Candle[] = [];
 
   try {
@@ -192,6 +167,7 @@ async function computeSignal(
   const rsi = getLastValue(rsiSeries);
   const macd = getLastValue(macdSeries.macd);
   const macdHist = getLastValue(macdSeries.hist);
+  const macdHistPrev = macdSeries.hist.length > 1 ? macdSeries.hist[macdSeries.hist.length - 2] : null;
   const atr = getLastValue(atrSeries);
   const adx = getLastValue(adxSeries);
 
@@ -201,7 +177,8 @@ async function computeSignal(
   const trendScore = Math.abs(trendBias);
 
   const histDirection = macdHist !== null ? Math.sign(macdHist) : 0;
-  const momentumBias = clamp(histDirection, -1, 1);
+  const histSlope = macdHistPrev !== null && macdHist !== null ? Math.sign(macdHist - macdHistPrev) : 0;
+  const momentumBias = clamp(histDirection * 0.7 + histSlope * 0.3, -1, 1);
   const momentumScore = Math.abs(momentumBias);
 
   let oscillatorBias = 0;
@@ -300,15 +277,3 @@ export function summarizeOverall(timeframes: TimeframeSignal[]): SignalResult["o
   return { bias, confidence: avgConfidence, bestTimeframe: best.tf };
 }
 
-export async function computeSignals(
-  symbol: string,
-  timeframes: string[],
-  limit = 500
-): Promise<TimeframeSignal[]> {
-  const results: TimeframeSignal[] = [];
-  for (const tf of timeframes) {
-    const signal = await computeSignal(symbol, tf, limit);
-    results.push(signal);
-  }
-  return results;
-}
