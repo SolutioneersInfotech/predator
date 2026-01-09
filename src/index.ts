@@ -14,6 +14,7 @@ import { verifyAuth } from "./middlewares/authMiddleware.js";
 import botRoutes from "./routes/botRoutes.js";
 import tradeRoutes from "./routes/tradeRoutes.js";
 import userSyncRoutes from "./routes/userSync.route.js";
+import analysisRoutes from "./routes/analysisRoutes.js";
 
 import testDeltaRoutes from "./routes/testdelta.routes.js"
 
@@ -52,6 +53,7 @@ app.get("/", (_req, res) => res.json({ message: "Predator API running" }));
 // Routes
 app.use("/api/strategy", verifyAuth("Bitbot1"), strategyRouter);
 app.use("/api/commodities", verifyAuth("Bitbot1"), commodityRoutes);
+app.use("/api/analysis", verifyAuth("Bitbot1"), analysisRoutes);
 app.use("/api/platform-metrics", platformMetricsRoutes);
 app.use("/api/exchange", exchangeRouter);
 app.use("/api/trade", tradeRouter);
@@ -84,4 +86,3 @@ connectDB().then(() => {
         console.log(`🔌 WebSocket running on ws://localhost:${PORT}`);
     });
 });
-
