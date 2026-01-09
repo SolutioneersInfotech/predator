@@ -8,7 +8,7 @@ import {
   computeRSISeries,
 } from "../utils/indicatorTechnicalCalculation.js";
 import { detectMarketType } from "../utils/marketType.js";
-import { getCacheValue, setCacheValue } from "../utils/ttlCache.js";
+import { getCacheValue, setCacheValue } from "../utils/cache.js";
 
 type SignalSnapshot = {
   rsi: number | null;
@@ -119,18 +119,19 @@ function buildEmptySignal(tf: string): TimeframeSignal {
   };
 }
 
-async function computeSignal(
+export async function computeSignal(
   symbol: string,
   tf: string,
-  limit = 500
+  limit = 500,
+  market?: string
 ): Promise<TimeframeSignal> {
-  const cacheKey = `${symbol}:${tf}`;
+  const cacheKey = `signal:${symbol}:${tf}:${limit}:${market ?? "auto"}`;
   const cached = getCacheValue<TimeframeSignal>(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const type = detectMarketType(symbol);
+  const type = market ?? detectMarketType(symbol);
   let candles: Candle[] = [];
 
   try {
@@ -166,6 +167,7 @@ async function computeSignal(
   const rsi = getLastValue(rsiSeries);
   const macd = getLastValue(macdSeries.macd);
   const macdHist = getLastValue(macdSeries.hist);
+  const macdHistPrev = macdSeries.hist.length > 1 ? macdSeries.hist[macdSeries.hist.length - 2] : null;
   const atr = getLastValue(atrSeries);
   const adx = getLastValue(adxSeries);
 
@@ -175,7 +177,8 @@ async function computeSignal(
   const trendScore = Math.abs(trendBias);
 
   const histDirection = macdHist !== null ? Math.sign(macdHist) : 0;
-  const momentumBias = clamp(histDirection, -1, 1);
+  const histSlope = macdHistPrev !== null && macdHist !== null ? Math.sign(macdHist - macdHistPrev) : 0;
+  const momentumBias = clamp(histDirection * 0.7 + histSlope * 0.3, -1, 1);
   const momentumScore = Math.abs(momentumBias);
 
   let oscillatorBias = 0;
@@ -274,15 +277,3 @@ export function summarizeOverall(timeframes: TimeframeSignal[]): SignalResult["o
   return { bias, confidence: avgConfidence, bestTimeframe: best.tf };
 }
 
-export async function computeSignals(
-  symbol: string,
-  timeframes: string[],
-  limit = 500
-): Promise<TimeframeSignal[]> {
-  const results: TimeframeSignal[] = [];
-  for (const tf of timeframes) {
-    const signal = await computeSignal(symbol, tf, limit);
-    results.push(signal);
-  }
-  return results;
-}
