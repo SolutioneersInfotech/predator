@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
-import { computeSignals, summarizeOverall } from "../services/signalEngine.js";
+import { computeSignal, summarizeOverall, type TimeframeSignal } from "../services/signalEngine.js";
 import { getNewsSummary } from "../services/newsService.js";
+import { detectMarketType } from "../utils/marketType.js";
 
 const DEFAULT_TIMEFRAMES = ["15m", "1h", "4h", "1d", "1w"];
 
@@ -15,7 +16,13 @@ export async function getSignals(req: Request, res: Response) {
     const { symbol } = req.params;
     const timeframes = parseTimeframes(req.query.timeframes as string | undefined);
     const limit = Number(req.query.limit ?? 500);
-    const results = await computeSignals(symbol, timeframes, limit);
+    const market = req.query.market ? String(req.query.market) : detectMarketType(symbol);
+
+    const results: TimeframeSignal[] = [];
+    for (const tf of timeframes) {
+      const signal = await computeSignal(symbol, tf, limit, market);
+      results.push(signal);
+    }
 
     const response = {
       success: true,
@@ -45,3 +52,4 @@ export async function getNews(req: Request, res: Response) {
     res.status(500).json({ success: false, error: "Failed to fetch news." });
   }
 }
+
