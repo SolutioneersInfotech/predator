@@ -92,21 +92,22 @@ async function fetchYahooCandles(symbol: string, tf: string, limit: number): Pro
     period2,
   });
 
-  const timestamps = result?.timestamp ?? [];
-  const quotes = result?.indicators?.quote?.[0];
+  const quotes = result?.quotes ?? [];
 
-  if (!quotes || timestamps.length === 0) {
+  if (quotes.length === 0) {
     return [];
   }
 
-  return timestamps.map((timestamp, idx) => ({
-    time: timestamp * 1000,
-    open: quotes.open?.[idx] ?? 0,
-    high: quotes.high?.[idx] ?? 0,
-    low: quotes.low?.[idx] ?? 0,
-    close: quotes.close?.[idx] ?? 0,
-    volume: quotes.volume?.[idx] ?? undefined,
-  })).filter((c) => Number.isFinite(c.close));
+  return quotes
+    .map((quote) => ({
+      time: new Date(quote.date).getTime(),
+      open: quote.open ?? 0,
+      high: quote.high ?? 0,
+      low: quote.low ?? 0,
+      close: quote.close ?? 0,
+      volume: quote.volume ?? undefined,
+    }))
+    .filter((c) => Number.isFinite(c.close));
 }
 
 function buildEmptySignal(tf: string): TimeframeSignal {
