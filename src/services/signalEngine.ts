@@ -56,13 +56,15 @@ const timeframeMsMap: Record<string, number> = {
   "1w": 7 * 24 * 60 * 60 * 1000,
 };
 
-const yahooIntervalMap: Record<string, string> = {
+const yahooIntervalMap = {
   "15m": "15m",
   "1h": "1h",
   "4h": "1h",
   "1d": "1d",
   "1w": "1wk",
-};
+} as const;
+
+type YahooInterval = (typeof yahooIntervalMap)[keyof typeof yahooIntervalMap];
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -79,7 +81,7 @@ function getLastValue(series: (number | null)[]): number | null {
 }
 
 async function fetchYahooCandles(symbol: string, tf: string, limit: number): Promise<Candle[]> {
-  const interval = yahooIntervalMap[tf] ?? "1d";
+  const interval = (yahooIntervalMap as Record<string, YahooInterval>)[tf] ?? "1d";
   const windowMs = timeframeMsMap[tf] ?? timeframeMsMap["1d"];
   const period2 = new Date();
   const period1 = new Date(period2.getTime() - windowMs * limit);
@@ -276,4 +278,3 @@ export function summarizeOverall(timeframes: TimeframeSignal[]): SignalResult["o
 
   return { bias, confidence: avgConfidence, bestTimeframe: best.tf };
 }
-
