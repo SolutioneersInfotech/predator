@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { getCacheValue, setCacheValue } from "../utils/ttlCache.js";
+import { getCacheValue, setCacheValue } from "../utils/cache.js";
 
 type NewsItem = {
   title: string;
@@ -18,12 +18,12 @@ export type NewsSummary = {
   overallSentiment: "positive" | "negative" | "neutral";
   keyThemes: string[];
   watchlist: string[];
-  warning?: string;
+  error?: string;
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-function buildFallback(symbol: string, warning?: string): NewsSummary {
+function buildFallback(symbol: string, error?: string): NewsSummary {
   return {
     symbol,
     asOf: new Date().toISOString(),
@@ -31,7 +31,7 @@ function buildFallback(symbol: string, warning?: string): NewsSummary {
     overallSentiment: "neutral",
     keyThemes: [],
     watchlist: [],
-    ...(warning ? { warning } : {}),
+    ...(error ? { error } : {}),
   };
 }
 
@@ -66,7 +66,7 @@ export async function getNewsSummary(
   try {
     const response = await client.responses.create({
       model,
-      tools: [{ type: "web_search_preview_2025_03_11" }],
+      tools: [{ type: "web_search" }],
       temperature: 0.2,
       input: [
         {
@@ -113,3 +113,4 @@ export async function getNewsSummary(
     return fallback;
   }
 }
+
