@@ -1,4 +1,4 @@
-import fetch from "node-fetch";
+import fetch, { type Response } from "node-fetch";
 import { getCacheValue, setCacheValue } from "../utils/cache.js";
 
 type NewsItem = {
