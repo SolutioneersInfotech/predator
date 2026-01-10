@@ -104,6 +104,7 @@ export async function getNewsSummary(
     normalizedModel && normalizedModel !== defaultModel
       ? [normalizedModel, defaultModel]
       : [normalizedModel || defaultModel];
+  const apiVersions = ["v1beta", "v1"];
 
   try {
     const prompt = [
@@ -118,43 +119,49 @@ export async function getNewsSummary(
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
+      for (const apiVersion of apiVersions) {
+        const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [
+                {
+                  text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+                },
+              ],
+            },
+            tools: [{ googleSearch: {} }],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: "application/json",
+            },
+            contents: [
               {
-                text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+                role: "user",
+                parts: [{ text: prompt }],
               },
             ],
-          },
-          tools: [{ googleSearch: {} }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: "application/json",
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }],
-            },
-          ],
-        }),
-      });
+          }),
+        });
 
-      if (response.ok) {
+        if (response.ok) {
+          break;
+        }
+
+        if (response.status === 404) {
+          lastError = new Error(`Gemini request failed with status ${response.status}`);
+          response = null;
+          continue;
+        }
+
+        throw new Error(`Gemini request failed with status ${response.status}`);
+      }
+
+      if (response?.ok) {
         break;
       }
-
-      if (response.status === 404 && modelsToTry.length > 1) {
-        lastError = new Error(`Gemini request failed with status ${response.status}`);
-        response = null;
-        continue;
-      }
-
-      throw new Error(`Gemini request failed with status ${response.status}`);
     }
 
     if (!response || !response.ok) {
