@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import fetch from "node-fetch";
 import { getCacheValue, setCacheValue } from "../utils/cache.js";
 
 type NewsItem = {
@@ -86,52 +86,70 @@ export async function getNewsSummary(
     return cached;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     const fallback = buildFallback(
       symbol,
       sanitizedPage,
       sanitizedLimit,
-      "OPENAI_API_KEY not configured."
+      "GEMINI_API_KEY not configured."
     );
     setCacheValue(cacheKey, fallback, CACHE_TTL_MS);
     return fallback;
   }
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const model = process.env.OPENAI_MODEL || "gpt-5.2";
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   try {
-    const response = await client.responses.create({
-      model,
-      tools: [{ type: "web_search_preview" }],
-      temperature: 0.2,
-      input: [
-        {
-          role: "system",
-          content:
-            "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+    const prompt = [
+      `Find the latest commodity-related news about ${symbol} within the last ${timeWindowHours} hours.`,
+      "Summarize into JSON with keys:",
+      "{ items: [{ title, source, publishedAt, url, summary, sentiment, impact }], overallSentiment, keyThemes, watchlist }.",
+      "Provide valid URLs to full stories.",
+      `Limit to ${requestCount} items. Sentiment values: positive|negative|neutral. Impact: high|medium|low.`,
+    ].join(" ");
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [
+            {
+              text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+            },
+          ],
         },
-        {
-          role: "user",
-          content: [
-            `Find the latest commodity-related news about ${symbol} within the last ${timeWindowHours} hours.`,
-            "Summarize into JSON with keys:",
-            "{ items: [{ title, source, publishedAt, url, summary, sentiment, impact }], overallSentiment, keyThemes, watchlist }.",
-            "Provide valid URLs to full stories.",
-            `Limit to ${requestCount} items. Sentiment values: positive|negative|neutral. Impact: high|medium|low.`,
-          ].join(" "),
+        tools: [{ googleSearch: {} }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json",
         },
-      ],
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+      }),
     });
 
-    const text = response.output_text?.trim() ?? "";
+    if (!response.ok) {
+      throw new Error(`Gemini request failed with status ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
     const parsed = safeParseJson(text);
     if (!parsed) {
       const fallback = buildFallback(
         symbol,
         sanitizedPage,
         sanitizedLimit,
-        "Failed to parse OpenAI response."
+        "Failed to parse Gemini response."
       );
       setCacheValue(cacheKey, fallback, CACHE_TTL_MS);
       return fallback;
@@ -179,12 +197,12 @@ export async function getNewsSummary(
     setCacheValue(cacheKey, summary, CACHE_TTL_MS);
     return summary;
   } catch (error: any) {
-    console.error("OpenAI news error:", error?.message ?? error);
+    console.error("Gemini news error:", error?.message ?? error);
     const fallback = buildFallback(
       symbol,
       sanitizedPage,
       sanitizedLimit,
-      "OpenAI request failed."
+      "Gemini request failed."
     );
     setCacheValue(cacheKey, fallback, CACHE_TTL_MS);
     return fallback;
