@@ -1,4 +1,4 @@
-import fetch from "node-fetch";
+import fetch, { type Response } from "node-fetch";
 import { getCacheValue, setCacheValue } from "../utils/cache.js";
 
 type NewsItem = {
@@ -98,8 +98,12 @@ export async function getNewsSummary(
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const normalizedModel = process.env.GEMINI_MODEL?.replace(/^models\//, "").trim();
+  const defaultModel = "gemini-1.5-flash";
+  const modelsToTry =
+    normalizedModel && normalizedModel !== defaultModel
+      ? [normalizedModel, defaultModel]
+      : [normalizedModel || defaultModel];
 
   try {
     const prompt = [
@@ -110,33 +114,51 @@ export async function getNewsSummary(
       `Limit to ${requestCount} items. Sentiment values: positive|negative|neutral. Impact: high|medium|low.`,
     ].join(" ");
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [
+    let response: Response | null = null;
+    let lastError: Error | null = null;
+
+    for (const model of modelsToTry) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [
+              {
+                text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+              },
+            ],
+          },
+          tools: [{ googleSearch: {} }],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+          },
+          contents: [
             {
-              text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+              role: "user",
+              parts: [{ text: prompt }],
             },
           ],
-        },
-        tools: [{ googleSearch: {} }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }],
-          },
-        ],
-      }),
-    });
+        }),
+      });
 
-    if (!response.ok) {
+      if (response.ok) {
+        break;
+      }
+
+      if (response.status === 404 && modelsToTry.length > 1) {
+        lastError = new Error(`Gemini request failed with status ${response.status}`);
+        response = null;
+        continue;
+      }
+
       throw new Error(`Gemini request failed with status ${response.status}`);
+    }
+
+    if (!response || !response.ok) {
+      throw lastError ?? new Error("Gemini request failed.");
     }
 
     const payload = (await response.json()) as {
