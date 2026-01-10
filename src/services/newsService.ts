@@ -66,7 +66,7 @@ export async function getNewsSummary(
   try {
     const response = await client.responses.create({
       model,
-      tools: [{ type: "web_search" }],
+      tools: [{ type: "web_search_preview" }],
       temperature: 0.2,
       input: [
         {
@@ -113,4 +113,3 @@ export async function getNewsSummary(
     return fallback;
   }
 }
-
