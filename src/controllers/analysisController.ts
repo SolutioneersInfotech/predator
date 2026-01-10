@@ -43,13 +43,13 @@ export async function getNews(req: Request, res: Response) {
   try {
     const { symbol } = req.params;
     const timeWindowHours = Number(req.query.timeWindowHours ?? 48);
-    const maxItems = Number(req.query.maxItems ?? 10);
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 8);
 
-    const summary = await getNewsSummary(symbol, timeWindowHours, maxItems);
+    const summary = await getNewsSummary(symbol, { timeWindowHours, page, limit });
     res.json(summary);
   } catch (error) {
     console.error("News endpoint error:", error);
     res.status(500).json({ success: false, error: "Failed to fetch news." });
   }
 }
-
