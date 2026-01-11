@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { computeSignal, summarizeOverall, type TimeframeSignal } from "../services/signalEngine.js";
 import { getNewsSummary } from "../services/newsService.js";
+import { getMarketSummary } from "../services/marketSummaryService.js";
 import { detectMarketType } from "../utils/marketType.js";
 
 const DEFAULT_TIMEFRAMES = ["15m", "1h", "4h", "1d", "1w"];
@@ -51,5 +52,21 @@ export async function getNews(req: Request, res: Response) {
   } catch (error) {
     console.error("News endpoint error:", error);
     res.status(500).json({ success: false, error: "Failed to fetch news." });
+  }
+}
+
+export async function getSummary(req: Request, res: Response) {
+  try {
+    const symbol = req.query.symbol ? String(req.query.symbol) : "";
+    if (!symbol) {
+      return res.status(400).json({ success: false, error: "Missing required symbol query param." });
+    }
+
+    const timeframe = req.query.timeframe ? String(req.query.timeframe) : undefined;
+    const summary = await getMarketSummary(symbol, timeframe);
+    return res.json(summary);
+  } catch (error) {
+    console.error("Summary endpoint error:", error);
+    return res.status(500).json({ success: false, error: "Failed to fetch market summary." });
   }
 }
