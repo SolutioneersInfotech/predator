@@ -128,7 +128,9 @@ export async function getNewsSummary(
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
-      for (const apiVersion of apiVersions) {
+      const supportsV1 = !model.startsWith("gemini-1.5");
+      const versionsToTry = supportsV1 ? apiVersions : ["v1beta"];
+      for (const apiVersion of versionsToTry) {
         const allowsSearch = enableSearch && apiVersion === "v1beta";
         const toolVariants = allowsSearch ? [true, false] : [false];
         for (const withSearch of toolVariants) {
