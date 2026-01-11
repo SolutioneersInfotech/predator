@@ -100,11 +100,20 @@ export async function getNewsSummary(
   const apiKey = process.env.GEMINI_API_KEY;
   const normalizedModel = process.env.GEMINI_MODEL?.replace(/^models\//, "").trim();
   const defaultModel = "gemini-1.5-flash";
+  const deprecatedModels = new Set(["gemini-pro", "text-bison", "chat-bison", "text-bison-001"]);
+  const selectedModel =
+    normalizedModel && !deprecatedModels.has(normalizedModel) ? normalizedModel : undefined;
+  if (normalizedModel && !selectedModel) {
+    console.warn(
+      `Deprecated GEMINI_MODEL "${normalizedModel}" detected; falling back to ${defaultModel}.`
+    );
+  }
   const modelsToTry =
-    normalizedModel && normalizedModel !== defaultModel
-      ? [normalizedModel, defaultModel]
-      : [normalizedModel || defaultModel];
+    selectedModel && selectedModel !== defaultModel
+      ? [selectedModel, defaultModel]
+      : [selectedModel || defaultModel];
   const apiVersions = ["v1beta", "v1"];
+  const enableSearch = process.env.GEMINI_ENABLE_SEARCH?.toLowerCase() !== "false";
 
   try {
     const prompt = [
@@ -120,43 +129,54 @@ export async function getNewsSummary(
 
     for (const model of modelsToTry) {
       for (const apiVersion of apiVersions) {
-        const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [
+        const allowsSearch = enableSearch && apiVersion === "v1beta";
+        const toolVariants = allowsSearch ? [true, false] : [false];
+        for (const withSearch of toolVariants) {
+          const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
+          response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [
+                  {
+                    text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+                  },
+                ],
+              },
+              ...(withSearch ? { tools: [{ googleSearch: {} }] } : {}),
+              generationConfig: {
+                temperature: 0.2,
+                responseMimeType: "application/json",
+              },
+              contents: [
                 {
-                  text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+                  role: "user",
+                  parts: [{ text: prompt }],
                 },
               ],
-            },
-            tools: [{ googleSearch: {} }],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: "application/json",
-            },
-            contents: [
-              {
-                role: "user",
-                parts: [{ text: prompt }],
-              },
-            ],
-          }),
-        });
+            }),
+          });
 
-        if (response.ok) {
+          if (response.ok) {
+            break;
+          }
+
+          const errorBody = await response.text().catch(() => "");
+          if ([400, 403, 404].includes(response.status)) {
+            const suffix = errorBody ? `: ${errorBody}` : "";
+            lastError = new Error(`Gemini request failed with status ${response.status}${suffix}`);
+            response = null;
+            continue;
+          }
+
+          const suffix = errorBody ? `: ${errorBody}` : "";
+          throw new Error(`Gemini request failed with status ${response.status}${suffix}`);
+        }
+
+        if (response?.ok) {
           break;
         }
-
-        if (response.status === 404) {
-          lastError = new Error(`Gemini request failed with status ${response.status}`);
-          response = null;
-          continue;
-        }
-
-        throw new Error(`Gemini request failed with status ${response.status}`);
       }
 
       if (response?.ok) {
