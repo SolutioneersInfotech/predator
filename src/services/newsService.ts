@@ -99,39 +99,96 @@ export async function getNewsSummary(
 
   const apiKey = process.env.GEMINI_API_KEY;
   const normalizedModel = process.env.GEMINI_MODEL?.replace(/^models\//, "").trim();
-  const defaultModel = "gemini-1.5-flash-latest";
   const deprecatedModels = new Set(["gemini-pro", "text-bison", "chat-bison", "text-bison-001"]);
-  const selectedModel =
+  const requestedModel =
     normalizedModel && !deprecatedModels.has(normalizedModel) ? normalizedModel : undefined;
+  const defaultModel = requestedModel ?? "gemini-flash-latest";
+  const apiVersionOverride = process.env.GEMINI_API_VERSION?.trim();
+  const apiVersions = apiVersionOverride ? [apiVersionOverride] : ["v1beta", "v1"];
+  const enableSearch = process.env.GEMINI_ENABLE_SEARCH?.toLowerCase() === "true";
 
-  const expandModelCandidates = (modelName: string): string[] => {
-    const candidates = new Set<string>([modelName]);
-    if (modelName.startsWith("gemini-1.5-flash")) {
-      candidates.add("gemini-1.5-flash");
-      candidates.add("gemini-1.5-flash-001");
-      candidates.add("gemini-1.5-flash-002");
-      candidates.add("gemini-1.5-flash-latest");
-    }
-    if (modelName.startsWith("gemini-1.5-pro")) {
-      candidates.add("gemini-1.5-pro");
-      candidates.add("gemini-1.5-pro-001");
-      candidates.add("gemini-1.5-pro-002");
-      candidates.add("gemini-1.5-pro-latest");
-    }
-    return Array.from(candidates);
-  };
-  if (normalizedModel && !selectedModel) {
+  if (normalizedModel && !requestedModel) {
     console.warn(
       `Deprecated GEMINI_MODEL "${normalizedModel}" detected; falling back to ${defaultModel}.`
     );
   }
-  const baseModelsToTry =
-    selectedModel && selectedModel !== defaultModel
-      ? [selectedModel, defaultModel]
-      : [selectedModel || defaultModel];
-  const modelsToTry = baseModelsToTry.flatMap((model) => expandModelCandidates(model));
-  const apiVersions = ["v1beta", "v1"];
-  const enableSearch = process.env.GEMINI_ENABLE_SEARCH?.toLowerCase() !== "false";
+
+  const buildModelCandidates = (availableModels: Set<string> | null): string[] => {
+    const candidates: string[] = [];
+    const push = (model?: string) => {
+      if (model && !candidates.includes(model)) {
+        candidates.push(model);
+      }
+    };
+
+    push(requestedModel);
+    push(defaultModel);
+    if (defaultModel !== "gemini-flash-latest") {
+      push("gemini-flash-latest");
+    }
+    if (availableModels?.has("gemini-1.5-flash")) {
+      push("gemini-1.5-flash");
+    }
+
+    if (availableModels) {
+      const sortedModels = Array.from(availableModels);
+      const flashModel = sortedModels.find((model) => model.includes("flash"));
+      const firstModel = sortedModels[0];
+      push(flashModel);
+      push(firstModel);
+    }
+
+    return candidates;
+  };
+
+  const warnOnce = new Set<string>();
+  const logModelMismatch = (model: string, apiVersion: string) => {
+    const key = `${apiVersion}:${model}`;
+    if (warnOnce.has(key)) return;
+    warnOnce.add(key);
+    console.warn(
+      `Gemini model "${model}" not found in ${apiVersion} model list; attempting anyway.`
+    );
+  };
+
+  const logGeminiFailure = (
+    response: Response,
+    bodyText: string,
+    apiVersion: string,
+    model: string,
+    withSearch: boolean
+  ) => {
+    console.error("Gemini request failed", {
+      status: response.status,
+      statusText: response.statusText,
+      apiVersion,
+      model,
+      googleSearch: withSearch,
+      body: bodyText,
+    });
+  };
+
+  const buildGeminiError = (
+    response: Response,
+    bodyText: string,
+    apiVersion: string,
+    model: string,
+    withSearch: boolean
+  ): Error => {
+    const excerpt = bodyText ? bodyText.slice(0, 300) : "No response body.";
+    return new Error(
+      `Gemini request failed with status ${response.status} ${response.statusText} ` +
+        `(apiVersion=${apiVersion}, model=${model}, googleSearch=${withSearch}): ${excerpt}`
+    );
+  };
+
+  const isModelNotFound = (response: Response, bodyText: string): boolean => {
+    if (![400, 404].includes(response.status)) {
+      return false;
+    }
+    const normalized = bodyText.toLowerCase();
+    return normalized.includes("model") && normalized.includes("not");
+  };
 
   const fetchAvailableModels = async (apiVersion: string): Promise<Set<string> | null> => {
     const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models?key=${apiKey}`;
@@ -169,20 +226,26 @@ export async function getNewsSummary(
 
     const availableModelsByVersion = new Map<string, Set<string> | null>();
 
-    for (const model of modelsToTry) {
-      const supportsV1 = !model.startsWith("gemini-1.5");
-      const versionsToTry = supportsV1 ? apiVersions : ["v1beta"];
-      for (const apiVersion of versionsToTry) {
-        if (!availableModelsByVersion.has(apiVersion)) {
-          availableModelsByVersion.set(apiVersion, await fetchAvailableModels(apiVersion));
-        }
-        const availableModels = availableModelsByVersion.get(apiVersion);
-        if (availableModels && !availableModels.has(model)) {
+    for (const apiVersion of apiVersions) {
+      if (!availableModelsByVersion.has(apiVersion)) {
+        availableModelsByVersion.set(apiVersion, await fetchAvailableModels(apiVersion));
+      }
+      const availableModels = availableModelsByVersion.get(apiVersion);
+      const modelsToTry = buildModelCandidates(availableModels);
+
+      for (const model of modelsToTry) {
+        const supportsV1 = !model.startsWith("gemini-1.5");
+        if (apiVersion === "v1" && !supportsV1) {
           continue;
         }
+        if (availableModels && !availableModels.has(model)) {
+          logModelMismatch(model, apiVersion);
+        }
+
         const allowsSearch = enableSearch && apiVersion === "v1beta";
-        const toolVariants = allowsSearch ? [true, false] : [false];
-        for (const withSearch of toolVariants) {
+        const searchAttempts = allowsSearch ? [true, false] : [false];
+
+        for (const withSearch of searchAttempts) {
           const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
           const requestBody: Record<string, unknown> = {
             ...(withSearch ? { tools: [{ googleSearch: {} }] } : {}),
@@ -219,15 +282,24 @@ export async function getNewsSummary(
           }
 
           const errorBody = await response.text().catch(() => "");
+          logGeminiFailure(response, errorBody, apiVersion, model, withSearch);
+          lastError = buildGeminiError(response, errorBody, apiVersion, model, withSearch);
+
+          if (withSearch && [400, 403].includes(response.status)) {
+            continue;
+          }
+
           if ([400, 403, 404].includes(response.status)) {
-            const suffix = errorBody ? `: ${errorBody}` : "";
-            lastError = new Error(`Gemini request failed with status ${response.status}${suffix}`);
+            if (availableModels && isModelNotFound(response, errorBody)) {
+              console.warn(
+                `Gemini model "${model}" rejected by API; trying fallback model from list.`
+              );
+            }
             response = null;
             continue;
           }
 
-          const suffix = errorBody ? `: ${errorBody}` : "";
-          throw new Error(`Gemini request failed with status ${response.status}${suffix}`);
+          throw lastError;
         }
 
         if (response?.ok) {
@@ -302,12 +374,13 @@ export async function getNewsSummary(
     setCacheValue(cacheKey, summary, CACHE_TTL_MS);
     return summary;
   } catch (error: any) {
-    console.error("Gemini news error:", error?.message ?? error);
+    const message = error?.message ?? String(error);
+    console.error("Gemini news error:", message);
     const fallback = buildFallback(
       symbol,
       sanitizedPage,
       sanitizedLimit,
-      "Gemini request failed."
+      `Gemini request failed: ${message}`
     );
     setCacheValue(cacheKey, fallback, CACHE_TTL_MS);
     return fallback;
