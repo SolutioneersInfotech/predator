@@ -10,6 +10,7 @@ async function run() {
   const endpoints = [
     `${baseUrl}/api/analysis/signals/BTCUSDT`,
     `${baseUrl}/api/analysis/news/BTCUSDT`,
+    `${baseUrl}/api/analysis/key-levels/ETHUSDT?timeframe=1h`,
   ];
 
   for (const url of endpoints) {
