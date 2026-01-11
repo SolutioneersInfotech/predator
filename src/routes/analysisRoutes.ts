@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
-import { getNews, getSignals, getSummary } from "../controllers/analysisController.js";
+import { getKeyLevels, getNews, getSignals, getSummary } from "../controllers/analysisController.js";
 import { checkRateLimit } from "../utils/rateLimiter.js";
 
 const analysisRoutes = Router();
@@ -25,6 +25,7 @@ function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
 
 analysisRoutes.get("/signals/:symbol", rateLimitMiddleware, getSignals);
 analysisRoutes.get("/news/:symbol", rateLimitMiddleware, getNews);
+analysisRoutes.get("/key-levels/:symbol", rateLimitMiddleware, getKeyLevels);
 analysisRoutes.get("/summary", rateLimitMiddleware, getSummary);
 
 export default analysisRoutes;

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { computeSignal, summarizeOverall, type TimeframeSignal } from "../services/signalEngine.js";
 import { getNewsSummary } from "../services/newsService.js";
 import { getMarketSummary } from "../services/marketSummaryService.js";
+import { getKeyLevels as getKeyLevelsService } from "../services/keyLevelsService.js";
 import { detectMarketType } from "../utils/marketType.js";
 
 const DEFAULT_TIMEFRAMES = ["15m", "1h", "4h", "1d", "1w"];
@@ -16,7 +17,8 @@ export async function getSignals(req: Request, res: Response) {
   try {
     const { symbol } = req.params;
     const timeframes = parseTimeframes(req.query.timeframes as string | undefined);
-    const limit = Number(req.query.limit ?? 500);
+    const rawLimit = Number(req.query.limit ?? 500);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 500;
     const market = req.query.market ? String(req.query.market) : detectMarketType(symbol);
 
     const results: TimeframeSignal[] = [];
@@ -68,5 +70,26 @@ export async function getSummary(req: Request, res: Response) {
   } catch (error) {
     console.error("Summary endpoint error:", error);
     return res.status(500).json({ success: false, error: "Failed to fetch market summary." });
+  }
+}
+
+export async function getKeyLevels(req: Request, res: Response) {
+  try {
+    const { symbol } = req.params;
+    const timeframe = req.query.timeframe ? String(req.query.timeframe) : "1h";
+    const rawLimit = Number(req.query.limit ?? 500);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 500;
+    const marketQuery = req.query.market ? String(req.query.market) : detectMarketType(symbol);
+    const market = marketQuery === "equity" ? "stock" : marketQuery;
+
+    const keyLevels = await getKeyLevelsService(symbol, timeframe, limit, market);
+
+    res.json({
+      success: true,
+      ...keyLevels,
+    });
+  } catch (error) {
+    console.error("Key levels endpoint error:", error);
+    res.status(500).json({ success: false, error: "Failed to compute key levels." });
   }
 }
