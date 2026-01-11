@@ -99,21 +99,57 @@ export async function getNewsSummary(
 
   const apiKey = process.env.GEMINI_API_KEY;
   const normalizedModel = process.env.GEMINI_MODEL?.replace(/^models\//, "").trim();
-  const defaultModel = "gemini-1.5-flash";
+  const defaultModel = "gemini-1.5-flash-latest";
   const deprecatedModels = new Set(["gemini-pro", "text-bison", "chat-bison", "text-bison-001"]);
   const selectedModel =
     normalizedModel && !deprecatedModels.has(normalizedModel) ? normalizedModel : undefined;
+
+  const expandModelCandidates = (modelName: string): string[] => {
+    const candidates = new Set<string>([modelName]);
+    if (modelName.startsWith("gemini-1.5-flash")) {
+      candidates.add("gemini-1.5-flash-001");
+      candidates.add("gemini-1.5-flash-latest");
+    }
+    if (modelName.startsWith("gemini-1.5-pro")) {
+      candidates.add("gemini-1.5-pro-001");
+      candidates.add("gemini-1.5-pro-latest");
+    }
+    return Array.from(candidates);
+  };
   if (normalizedModel && !selectedModel) {
     console.warn(
       `Deprecated GEMINI_MODEL "${normalizedModel}" detected; falling back to ${defaultModel}.`
     );
   }
-  const modelsToTry =
+  const baseModelsToTry =
     selectedModel && selectedModel !== defaultModel
       ? [selectedModel, defaultModel]
       : [selectedModel || defaultModel];
+  const modelsToTry = baseModelsToTry.flatMap((model) => expandModelCandidates(model));
   const apiVersions = ["v1beta", "v1"];
   const enableSearch = process.env.GEMINI_ENABLE_SEARCH?.toLowerCase() !== "false";
+
+  const fetchAvailableModels = async (apiVersion: string): Promise<Set<string> | null> => {
+    const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models?key=${apiKey}`;
+    const response = await fetch(endpoint, { method: "GET" });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json()) as {
+      models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+    };
+    const names = new Set<string>();
+    for (const model of payload.models ?? []) {
+      if (
+        model.name &&
+        Array.isArray(model.supportedGenerationMethods) &&
+        model.supportedGenerationMethods.includes("generateContent")
+      ) {
+        names.add(model.name.replace(/^models\//, ""));
+      }
+    }
+    return names.size > 0 ? names : null;
+  };
 
   try {
     const prompt = [
@@ -127,35 +163,51 @@ export async function getNewsSummary(
     let response: Response | null = null;
     let lastError: Error | null = null;
 
+    const availableModelsByVersion = new Map<string, Set<string> | null>();
+
     for (const model of modelsToTry) {
-      for (const apiVersion of apiVersions) {
+      const supportsV1 = !model.startsWith("gemini-1.5");
+      const versionsToTry = supportsV1 ? apiVersions : ["v1beta"];
+      for (const apiVersion of versionsToTry) {
+        if (!availableModelsByVersion.has(apiVersion)) {
+          availableModelsByVersion.set(apiVersion, await fetchAvailableModels(apiVersion));
+        }
+        const availableModels = availableModelsByVersion.get(apiVersion);
+        if (availableModels && !availableModels.has(model)) {
+          continue;
+        }
         const allowsSearch = enableSearch && apiVersion === "v1beta";
         const toolVariants = allowsSearch ? [true, false] : [false];
         for (const withSearch of toolVariants) {
           const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
+          const requestBody: Record<string, unknown> = {
+            ...(withSearch ? { tools: [{ googleSearch: {} }] } : {}),
+            generationConfig: {
+              temperature: 0.2,
+              ...(apiVersion === "v1beta" ? { responseMimeType: "application/json" } : {}),
+            },
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: prompt }],
+              },
+            ],
+          };
+
+          if (apiVersion === "v1beta") {
+            requestBody.systemInstruction = {
+              parts: [
+                {
+                  text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+                },
+              ],
+            };
+          }
+
           response = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              systemInstruction: {
-                parts: [
-                  {
-                    text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
-                  },
-                ],
-              },
-              ...(withSearch ? { tools: [{ googleSearch: {} }] } : {}),
-              generationConfig: {
-                temperature: 0.2,
-                responseMimeType: "application/json",
-              },
-              contents: [
-                {
-                  role: "user",
-                  parts: [{ text: prompt }],
-                },
-              ],
-            }),
+            body: JSON.stringify(requestBody),
           });
 
           if (response.ok) {
