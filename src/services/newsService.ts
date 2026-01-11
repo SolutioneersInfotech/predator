@@ -107,11 +107,15 @@ export async function getNewsSummary(
   const expandModelCandidates = (modelName: string): string[] => {
     const candidates = new Set<string>([modelName]);
     if (modelName.startsWith("gemini-1.5-flash")) {
+      candidates.add("gemini-1.5-flash");
       candidates.add("gemini-1.5-flash-001");
+      candidates.add("gemini-1.5-flash-002");
       candidates.add("gemini-1.5-flash-latest");
     }
     if (modelName.startsWith("gemini-1.5-pro")) {
+      candidates.add("gemini-1.5-pro");
       candidates.add("gemini-1.5-pro-001");
+      candidates.add("gemini-1.5-pro-002");
       candidates.add("gemini-1.5-pro-latest");
     }
     return Array.from(candidates);
