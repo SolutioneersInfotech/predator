@@ -128,34 +128,41 @@ export async function getNewsSummary(
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {
-      for (const apiVersion of apiVersions) {
+      const supportsV1 = !model.startsWith("gemini-1.5");
+      const versionsToTry = supportsV1 ? apiVersions : ["v1beta"];
+      for (const apiVersion of versionsToTry) {
         const allowsSearch = enableSearch && apiVersion === "v1beta";
         const toolVariants = allowsSearch ? [true, false] : [false];
         for (const withSearch of toolVariants) {
           const endpoint = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
+          const requestBody: Record<string, unknown> = {
+            ...(withSearch ? { tools: [{ googleSearch: {} }] } : {}),
+            generationConfig: {
+              temperature: 0.2,
+              ...(apiVersion === "v1beta" ? { responseMimeType: "application/json" } : {}),
+            },
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: prompt }],
+              },
+            ],
+          };
+
+          if (apiVersion === "v1beta") {
+            requestBody.systemInstruction = {
+              parts: [
+                {
+                  text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
+                },
+              ],
+            };
+          }
+
           response = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              systemInstruction: {
-                parts: [
-                  {
-                    text: "You are a market news analyst. Respond ONLY with valid JSON. Do not include markdown.",
-                  },
-                ],
-              },
-              ...(withSearch ? { tools: [{ googleSearch: {} }] } : {}),
-              generationConfig: {
-                temperature: 0.2,
-                responseMimeType: "application/json",
-              },
-              contents: [
-                {
-                  role: "user",
-                  parts: [{ text: prompt }],
-                },
-              ],
-            }),
+            body: JSON.stringify(requestBody),
           });
 
           if (response.ok) {
